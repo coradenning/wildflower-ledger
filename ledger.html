@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ledger — Wildflower Hub</title>
+<link rel="stylesheet" href="theme.css">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Ledger">
+<script>window.HUB_ACTIVE = 'ledger';</script>
+<style>
+  .balance-row{ display:flex; gap:14px; margin-bottom: 6px; flex-wrap:wrap; }
+  .balance-card{ flex:1; min-width:160px; background:#fffdf8; border:1px solid var(--ink-line); border-radius:0; padding:15px 18px; box-shadow:none; }
+  .balance-card .label{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color: var(--muted); text-transform:lowercase; }
+  .balance-card .value{ font-family:'Fraunces',serif; font-style:italic; font-weight:700; font-size:29px; color: var(--forest); font-variant-numeric: tabular-nums; }
+  .balance-card.spend .value{ color: var(--clay); }
+  .balance-card .sub{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#a89b7d; margin-top:2px; }
+
+  .section-title{ font-family:'Fraunces',serif; font-style:italic; font-weight:700; font-size:19px; color: var(--forest); margin: 24px 0 4px; display:flex; align-items:center; gap:8px; text-transform:lowercase; }
+  .section-title::before{ content:'❀'; color: var(--clay); font-size:14px; }
+  .section-vine{ width:100%; height:22px; opacity:0.45; margin-bottom:10px; }
+  .section-vine svg{ width:100%; height:100%; display:block; }
+
+  .recap-card{ background:#fffdf8; border: 1px solid var(--ink-line); border-radius:0; padding:16px 20px; margin: 10px 0 4px; position:relative; }
+  .recap-card .rc-title{ font-family:'Fraunces',serif; font-style:italic; font-weight:700; font-size:19px; color: var(--forest); margin-bottom:6px; display:flex; align-items:center; gap:6px; text-transform:lowercase; }
+  .recap-grid{ display:grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  .recap-item{ font-family:'JetBrains Mono',monospace; font-size:11.5px; color: var(--bark); }
+  .recap-item b{ color: var(--moss-deep); }
+
+  .today-list{ display:flex; flex-direction:column; gap:9px; margin-bottom:6px; }
+  .today-item{ display:flex; align-items:center; gap:12px; background:#fffdf8; border:1px solid var(--ink-line); border-radius:0; padding:11px 15px; transition: border-color 0.2s; }
+  .today-item:hover{ border-color: var(--rose); }
+  .leaf-check{
+    appearance:none; -webkit-appearance:none; width:22px; height:22px; min-width:22px;
+    border-radius: 0;
+    border: 2px solid var(--moss); background: #fff; cursor:pointer; position:relative;
+    transition: transform 0.1s;
+  }
+  .leaf-check:active{ transform: scale(0.9); }
+  .leaf-check:checked{ background: var(--moss); border-color: var(--moss-deep); }
+  .leaf-check:checked::after{ content:'✓'; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; }
+  .today-item .ti-name{ font-weight:700; color: var(--bark); font-size:14.5px; }
+  .today-item .ti-meta{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color: var(--muted); margin-top:2px; }
+  .today-item .ti-val{ margin-left:auto; font-family:'Fraunces',serif; font-style:italic; font-weight:700; font-size:17px; color: var(--moss-deep); white-space:nowrap; padding-left:8px; display:flex; align-items:center; gap:6px; }
+  .pill{ display:inline-block; padding:1px 7px; border:1px solid currentColor; border-radius:0; font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:0.2px; text-transform:lowercase; margin-left:6px; }
+  .pill.freq{ background:transparent; color:#8a6a34; }
+  .pill.done{ background:transparent; color: var(--moss-deep); }
+
+  .bloom{ display:inline-flex; }
+  .bloom svg{ width:22px; height:22px; }
+
+  .setup-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:8px; }
+  label{ font-family:'JetBrains Mono',monospace; font-size:11px; color: var(--muted); display:block; margin-bottom:3px; text-transform:lowercase; }
+  input[type=number], input[type=text], select{
+    width:100%; font-family:'JetBrains Mono',monospace; font-size:13px; padding:8px 10px;
+    border:1px solid var(--ink-line); border-radius:0; background:#fff; color: var(--bark);
+  }
+  .budget-hint, .weight-note{ font-family:'JetBrains Mono',monospace; font-size:11px; color: var(--muted); line-height:1.6; margin: 2px 0 12px; }
+  .goals-editor{ display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }
+  .goal-row{ display:grid; grid-template-columns: 2fr 1.1fr 0.8fr auto; gap:6px; align-items:center; background:#fff; padding:9px; border:1px solid var(--ink-line); border-radius:0; }
+  .goal-row .g-stats{ font-family:'JetBrains Mono',monospace; font-size:10px; color: var(--muted); grid-column: 1 / -1; }
+  .icon-btn{ background:transparent; border:1px solid var(--ink-line); border-radius:0; color: var(--clay); cursor:pointer; width:28px; height:28px; font-size:14px; }
+  .icon-btn:hover{ border-color: var(--clay); background:#f6f1e0; }
+  .quick-add{ display:flex; gap:8px; align-items:center; background:#fffdf8; border:1px dashed var(--honey); border-radius:0; padding:10px 12px; margin: 4px 0 20px; flex-wrap:wrap; }
+  .quick-add input[type=text]{ flex:2; min-width:140px; }
+  .quick-add select{ flex:1; min-width:90px; }
+  .quick-add input[type=number]{ width:60px; flex:none; }
+  .quick-add .add-goal-btn{ flex:none; white-space:nowrap; }
+  @keyframes justAdded{ 0%{ box-shadow:0 0 0 3px rgba(214,169,74,0.7); } 100%{ box-shadow:0 0 0 3px rgba(214,169,74,0); } }
+  .today-item.just-added{ animation: justAdded 1.6s ease-out; }
+  .add-goal-btn, .util-btn{ background:transparent; border:1px dashed var(--honey); color:#8a6a1f; font-size:12px; letter-spacing:0.2px; padding:7px 12px; border-radius:0; cursor:pointer; text-transform:lowercase; }
+  .add-goal-btn:hover, .util-btn:hover{ background:rgba(214,169,74,0.12); }
+  .save-btn{ background: var(--moss); color:#fff; border:none; font-weight:700; letter-spacing:0.2px; font-size:12.5px; padding:10px 18px; border-radius:0; cursor:pointer; margin-top:6px; text-transform:lowercase; }
+  .save-btn:hover{ background: var(--moss-deep); }
+
+  .week-nav{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:6px; }
+  .week-nav button{ background:none; border:1px solid var(--ink-line); border-radius:0; padding:5px 12px; cursor:pointer; color: var(--forest); text-transform:lowercase; }
+  .week-nav button:hover{ border-color: var(--rose); }
+  .week-nav .period-label{ font-family:'Fraunces',serif; font-style:italic; font-size:15px; color: var(--bark); }
+
+  table.ledger{ width:100%; border-collapse:collapse; font-size:12px; margin-bottom:10px; font-variant-numeric: tabular-nums; font-family:'JetBrains Mono',monospace; }
+  table.ledger th{ text-align:left; font-size:10px; color: var(--muted); padding:5px 4px; border-bottom:1px solid var(--ink-line); font-weight:700; text-transform:lowercase; letter-spacing:0.2px; }
+  table.ledger td{ padding:6px 4px; border-bottom:1px dotted var(--ink-line); vertical-align:middle; }
+  .date-cell{ white-space:nowrap; color: var(--bark); }
+  .date-cell.today{ font-weight:800; color: var(--moss-deep); }
+  .goal-cell{ text-align:center; }
+  .stamp-cell{ text-align:center; width:34px; }
+  .stamp svg{ width:20px; height:20px; }
+  .day-earn{ text-align:right; color: var(--moss-deep); white-space:nowrap; }
+
+  .cashout-row{ display:flex; justify-content:flex-end; gap:10px; margin-top:16px; flex-wrap:wrap; }
+  .cashout-btn{ background: var(--honey); color:#fff; border:none; font-weight:700; letter-spacing:0.2px; font-size:12.5px; padding:10px 18px; border-radius:0; cursor:pointer; text-transform:lowercase; }
+  .cashout-btn:hover{ filter:brightness(0.95); }
+  .cashout-btn:disabled{ opacity:0.4; cursor:not-allowed; }
+
+  .loading{ color: rgba(246,240,222,0.75); font-family:'JetBrains Mono',monospace; font-size:14px; padding:50px; text-align:center; }
+  details.settings summary{ cursor:pointer; font-family:'Fraunces',serif; font-style:italic; font-weight:700; font-size:17px; color: var(--forest); margin-bottom:10px; text-transform:lowercase; }
+  .empty-note{ font-size:12px; color: var(--muted); padding:6px 0 14px; }
+
+  @media (max-width:520px){
+    .setup-grid{ grid-template-columns:1fr; }
+    .balance-row{ flex-direction:column; }
+    .goal-row{ grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="book">
+  <div class="cover"><div id="hub-nav"></div></div>
+  <div class="pages">
+    <p class="accent-script" style="margin-bottom:-4px;">for tending good habits</p>
+    <h1>daily goals</h1>
+    <p class="empty-note" style="margin-top:-4px;">every goal you tend earns its bloom</p>
+    <div id="app"><div class="loading">unrolling the parchment…</div></div>
+  </div>
+</div>
+
+<script src="nav.js"></script>
+<script src="hub-auth.js"></script>
+<script src="quick-capture.js"></script>
+<script>
+
+(function(){
+  const DEFAULT_SETTINGS = {
+    periodType: 'week',
+    periodBudget: 20,
+    perfectBonusPct: 10,
+    goals: [
+      {id:'g1', name:'Russian speaking practice', frequency:'daily', weight:3},
+      {id:'g2', name:'Anki review', frequency:'daily', weight:2},
+      {id:'g3', name:'Check email inbox zero', frequency:'daily', weight:1}
+    ]
+  };
+  const HABIT_DAYS = 14;
+  const HABIT_WEEKS = 4;
+  const BASE_PCT = 25;
+
+  let settings = null;
+  let completions = { daily:{}, weekly:{}, perfectBonuses:{} };
+  let weekOffset = 0;
+  let editingSettings = false;
+  let lastAddedGoalId = null;
+
+  const app = document.getElementById('app');
+  const fmt = n => '$' + n.toFixed(2);
+  const escapeHtml = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const isoDate = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  function startOfWeek(d){ const date=new Date(d); const day=(date.getDay()+6)%7; date.setDate(date.getDate()-day); date.setHours(0,0,0,0); return date; }
+
+  // --- Hand-drawn decorative SVGs (no emoji; monochrome/duotone line art) ---
+  function vineSVG(color){
+    let petals = '';
+    for(let i=0;i<5;i++){
+      petals += `<ellipse cx="10" cy="4.5" rx="1.9" ry="3.2" fill="${color}" opacity="0.85" transform="rotate(${(360/5)*i} 10 10)"/>`;
+    }
+    return `<span style="position:relative;display:flex;align-items:center;justify-content:center;width:100%;height:100%;">
+      <span style="position:absolute;left:0;right:0;top:50%;height:1px;transform:translateY(-50%);background:linear-gradient(to right, transparent, ${color}, transparent);opacity:0.5;"></span>
+      <svg viewBox="0 0 20 20" style="position:relative;display:block;width:18px;height:18px;z-index:1;">
+        ${petals}<circle cx="10" cy="10" r="1.4" fill="#fffdf8"/>
+      </svg>
+    </span>`;
+  }
+  function bloomSVG(pct){
+    const petals = 5;
+    const filled = Math.round((pct/100)*petals);
+    let ps = '';
+    for(let i=0;i<petals;i++){
+      const angle = (360/petals)*i;
+      const on = i < filled;
+      ps += `<ellipse cx="11" cy="4.5" rx="2.6" ry="4" fill="${on?'#C97B5A':'#e7ddc4'}" transform="rotate(${angle} 11 11)"/>`;
+    }
+    return `<svg viewBox="0 0 22 22" class="bloom-svg">${ps}<circle cx="11" cy="11" r="2.4" fill="#D6A94A"/></svg>`;
+  }
+  function stampSVG(){
+    let ps = '';
+    for(let i=0;i<6;i++){
+      const angle = (360/6)*i;
+      ps += `<ellipse cx="10" cy="4" rx="2.3" ry="3.6" fill="#A78BC9" opacity="0.9" transform="rotate(${angle} 10 10)"/>`;
+    }
+    return `<svg viewBox="0 0 20 20">${ps}<circle cx="10" cy="10" r="2.1" fill="#D6A94A"/></svg>`;
+  }
+
+  // ====== BACKEND ======
+  // Data access now goes through hub-auth.js (window.hubGet/hubSet), which
+  // talks to the passphrase-gated hub-data Edge Function rather than the
+  // Supabase table directly — the table's RLS no longer allows anon access
+  // at all. supaGet/supaSet are kept as thin wrappers so nothing below
+  // needed to change.
+  const configured = true;
+  async function supaGet(key){ return window.hubGet(key); }
+  async function supaSet(key, value){ return window.hubSet(key, value); }
+
+  function getPeriodDates(offset){
+    const today = new Date();
+    if(settings.periodType==='week'){
+      const base = startOfWeek(today); base.setDate(base.getDate()+offset*7);
+      const days=[]; for(let i=0;i<7;i++){ const d=new Date(base); d.setDate(base.getDate()+i); days.push(d); }
+      return days;
+    } else {
+      const base = new Date(today.getFullYear(), today.getMonth()+offset, 1);
+      const days=[]; const dim = new Date(base.getFullYear(), base.getMonth()+1, 0).getDate();
+      for(let i=0;i<dim;i++) days.push(new Date(base.getFullYear(), base.getMonth(), i+1));
+      return days;
+    }
+  }
+  function periodWeekStarts(dates){
+    const map = new Map();
+    dates.forEach(d=>{ const ws=startOfWeek(d); const key=isoDate(ws); if(!map.has(key)) map.set(key,ws); });
+    return Array.from(map.values()).sort((a,b)=>a-b);
+  }
+  function periodLabel(dates){
+    const opts={month:'short',day:'numeric'};
+    return settings.periodType==='week'
+      ? dates[0].toLocaleDateString(undefined,opts)+' – '+dates[6].toLocaleDateString(undefined,opts)
+      : dates[0].toLocaleDateString(undefined,{month:'long',year:'numeric'});
+  }
+
+  async function loadData(){
+    if(!configured){
+      app.innerHTML = '<div class="empty-note">This ledger needs a backend connection before it can save anything. Open the file and fill in SUPABASE_URL and SUPABASE_ANON_KEY near the top of the &lt;script&gt; tag (find them in Supabase → Settings → API), then reload this page.</div>';
+      return;
+    }
+    try{ const v = await supaGet('settings'); settings = v?JSON.parse(v):JSON.parse(JSON.stringify(DEFAULT_SETTINGS)); }
+    catch(e){ console.error(e); settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS)); }
+    if(settings.perfectBonusPct===undefined) settings.perfectBonusPct = 10;
+    // Drop any legacy one-time goals — the "once" frequency has been retired
+    // in favor of the separate To-Dos page.
+    settings.goals = (settings.goals||[]).filter(g=>g.frequency!=='once');
+    // Auto-plant the goal the To-Dos page links to, if it isn't there yet.
+    if(!settings.goals.some(g=>g.id==='todos-complete')){
+      settings.goals.push({id:'todos-complete', name:'Complete all to-dos', frequency:'daily', weight:2});
+    }
+    await saveSettings();
+    try{ const v = await supaGet('completions'); completions = v?JSON.parse(v):{daily:{},weekly:{},perfectBonuses:{}}; }
+    catch(e){ console.error(e); completions = {daily:{},weekly:{},perfectBonuses:{}}; }
+    completions.daily = completions.daily||{}; completions.weekly = completions.weekly||{};
+    completions.perfectBonuses = completions.perfectBonuses||{};
+    checkAndClaimPerfectBonus();
+    await saveCompletions();
+
+    safeRender();
+  }
+  async function saveSettings(){ try{ await supaSet('settings', JSON.stringify(settings)); }catch(e){ console.error(e); } }
+  let _saveChain = Promise.resolve();
+  function saveCompletions(){
+    _saveChain = _saveChain.then(async ()=>{
+      try{ await supaSet('completions', JSON.stringify(completions)); }
+      catch(e){ console.error(e); }
+    });
+    return _saveChain;
+  }
+  async function cashOut(amount){
+    try{ const v = await supaGet('cashedOut'); let cur = v?parseFloat(v):0; cur+=amount; await supaSet('cashedOut', String(cur)); }
+    catch(e){ console.error(e); await supaSet('cashedOut', String(amount)).catch(()=>{}); }
+    safeRender();
+  }
+
+  const dailyGoalsFn = () => settings.goals.filter(g=>g.frequency==='daily');
+  const weeklyGoalsFn = () => settings.goals.filter(g=>g.frequency==='weekly');
+
+  function dailyStreakAt(goalId, dateStr){
+    let count=0; let d=new Date(dateStr+'T00:00:00');
+    while(true){ const ds=isoDate(d); if(completions.daily[goalId] && completions.daily[goalId][ds]){ count++; d.setDate(d.getDate()-1); } else break; }
+    return count;
+  }
+  function weeklyStreakAt(goalId, weekStartStr){
+    let count=0; let d=new Date(weekStartStr+'T00:00:00');
+    while(true){ const ds=isoDate(d); if(completions.weekly[goalId] && completions.weekly[goalId][ds]){ count++; d.setDate(d.getDate()-7); } else break; }
+    return count;
+  }
+  function multiplierPct(streakCount, habitUnits){
+    if(streakCount<=0) return 0;
+    return BASE_PCT + (100-BASE_PCT) * Math.min(streakCount-1, habitUnits-1) / (habitUnits-1);
+  }
+
+  function totalWeight(dates){
+    const weekStarts = periodWeekStarts(dates);
+    let tw = 0;
+    dailyGoalsFn().forEach(g=> tw += (g.weight||1) * dates.length);
+    weeklyGoalsFn().forEach(g=> tw += (g.weight||1) * weekStarts.length);
+    return tw;
+  }
+  function perInstanceValue(g, dates){
+    const tw = totalWeight(dates);
+    if(tw<=0) return 0;
+    return settings.periodBudget * (g.weight||1) / tw;
+  }
+
+  function checkAndClaimPerfectBonus(){
+    const dGoals = dailyGoalsFn();
+    if(dGoals.length===0) return;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const windowStart = new Date(today); windowStart.setDate(today.getDate()-6);
+    let allDone = true;
+    for(let i=0;i<7;i++){
+      const d = new Date(windowStart); d.setDate(windowStart.getDate()+i);
+      const ds = isoDate(d);
+      const dayOk = dGoals.every(g=> completions.daily[g.id] && completions.daily[g.id][ds]);
+      if(!dayOk){ allDone=false; break; }
+    }
+    const key = isoDate(windowStart);
+    if(allDone && !completions.perfectBonuses[key]){
+      const amount = settings.periodBudget * (settings.perfectBonusPct||0) / 100;
+      completions.perfectBonuses[key] = amount;
+    } else if(!allDone && completions.perfectBonuses[key]){
+      delete completions.perfectBonuses[key];
+    }
+  }
+
+  function computePeriodTotals(dates){
+    const weekStarts = periodWeekStarts(dates);
+    let recurringEarned = 0;
+    dailyGoalsFn().forEach(g=>{
+      const piv = perInstanceValue(g, dates);
+      dates.forEach(d=>{
+        const ds = isoDate(d);
+        if(completions.daily[g.id] && completions.daily[g.id][ds]){
+          recurringEarned += piv * multiplierPct(dailyStreakAt(g.id, ds), HABIT_DAYS)/100;
+        }
+      });
+    });
+    weeklyGoalsFn().forEach(g=>{
+      const piv = perInstanceValue(g, dates);
+      weekStarts.forEach(ws=>{
+        const wss = isoDate(ws);
+        if(completions.weekly[g.id] && completions.weekly[g.id][wss]){
+          recurringEarned += piv * multiplierPct(weeklyStreakAt(g.id, wss), HABIT_WEEKS)/100;
+        }
+      });
+    });
+    let bonusEarned = 0;
+    Object.keys(completions.perfectBonuses).forEach(key=>{
+      const kd = new Date(key+'T00:00:00');
+      if(kd >= dates[0] && kd <= dates[dates.length-1]) bonusEarned += completions.perfectBonuses[key];
+    });
+    return { recurringEarned, bonusEarned, total: recurringEarned+bonusEarned };
+  }
+
+  function csvExport(){
+    const rows = [];
+    Object.keys(completions.daily).forEach(goalId=>{
+      const g = settings.goals.find(x=>x.id===goalId);
+      const name = g ? g.name : '(removed goal)';
+      Object.keys(completions.daily[goalId]).forEach(ds=>{
+        if(completions.daily[goalId][ds]){
+          const dates = getPeriodDates(0);
+          const val = g ? perInstanceValue(g, dates) * multiplierPct(dailyStreakAt(goalId, ds), HABIT_DAYS)/100 : 0;
+          rows.push([ds, name, 'daily', 'completed', val.toFixed(2)]);
+        }
+      });
+    });
+    Object.keys(completions.weekly).forEach(goalId=>{
+      const g = settings.goals.find(x=>x.id===goalId);
+      const name = g ? g.name : '(removed goal)';
+      Object.keys(completions.weekly[goalId]).forEach(ws=>{
+        if(completions.weekly[goalId][ws]){
+          const dates = getPeriodDates(0);
+          const val = g ? perInstanceValue(g, dates) * multiplierPct(weeklyStreakAt(goalId, ws), HABIT_WEEKS)/100 : 0;
+          rows.push([ws, name, 'weekly', 'completed', val.toFixed(2)]);
+        }
+      });
+    });
+    Object.keys(completions.perfectBonuses).forEach(key=>{
+      rows.push([key, 'Perfect week bonus', 'bonus', 'earned', completions.perfectBonuses[key].toFixed(2)]);
+    });
+    rows.sort((a,b)=> a[0]<b[0]?-1:1);
+    const csv = [['Date','Goal','Frequency','Status','Value'], ...rows].map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'wildflower-ledger-export.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function render(){
+    const dates = getPeriodDates(weekOffset);
+    const weekStarts = periodWeekStarts(dates);
+    const { recurringEarned, bonusEarned, total } = computePeriodTotals(dates);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const todayStr = isoDate(today);
+    const currentWeekStart = isoDate(startOfWeek(today));
+    const goalCount = dailyGoalsFn().length + weeklyGoalsFn().length;
+
+    let html = '';
+    html += `<div class="balance-row">
+      <div class="balance-card"><div class="label">the most this ${settings.periodType} can bloom</div><div class="value">${fmt(settings.periodBudget)}</div>
+        <div class="sub">${goalCount} tended goal${goalCount!==1?'s':''}</div></div>
+      <div class="balance-card spend"><div class="label">earned so far</div><div class="value">${fmt(total)}</div>
+        <div class="sub">${fmt(recurringEarned)} goals${bonusEarned>0?' + '+fmt(bonusEarned)+' bonus':''}</div></div>
+    </div>`;
+
+    const pastOrTodayDates = dates.filter(d=>d<=today);
+    const dGoals = dailyGoalsFn();
+    let fullDays = 0;
+    pastOrTodayDates.forEach(d=>{ const ds=isoDate(d); if(dGoals.length>0 && dGoals.every(g=> completions.daily[g.id] && completions.daily[g.id][ds])) fullDays++; });
+    let bestStreak = { name:'—', val:0 };
+    dGoals.forEach(g=>{ const s = dailyStreakAt(g.id, todayStr); if(s>bestStreak.val) bestStreak = {name:g.name, val:s}; });
+    weeklyGoalsFn().forEach(g=>{ const s = weeklyStreakAt(g.id, currentWeekStart); if(s>bestStreak.val) bestStreak = {name:g.name+' (wk)', val:s}; });
+    html += `<div class="recap-card">
+      <div class="rc-title">❦ this ${settings.periodType}'s recap</div>
+      <div class="recap-grid">
+        <div class="recap-item"><b>${fullDays}/${pastOrTodayDates.length}</b> full days so far</div>
+        <div class="recap-item"><b>${bestStreak.val}</b> longest streak — ${escapeHtml(bestStreak.name)}</div>
+        <div class="recap-item"><b>${fmt(total)}</b> earned this ${settings.periodType}</div>
+      </div>
+    </div>`;
+
+    html += `<div class="section-title">today — ${today.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'})}</div>`;
+    html += `<div class="today-list">`;
+    let any = false;
+    dGoals.forEach(g=>{
+      any = true;
+      const done = !!(completions.daily[g.id] && completions.daily[g.id][todayStr]);
+      const piv = perInstanceValue(g, dates);
+      const currentStreak = dailyStreakAt(g.id, done ? todayStr : isoDate(new Date(today.getTime()-86400000)));
+      const projectedStreak = done ? currentStreak : currentStreak+1;
+      const pct = multiplierPct(projectedStreak, HABIT_DAYS);
+      html += `<div class="today-item">
+        <input type="checkbox" class="leaf-check" data-kind="daily" data-goal="${g.id}" data-date="${todayStr}" ${done?'checked':''}>
+        <div><div class="ti-name">${escapeHtml(g.name)}<span class="pill freq">daily</span>${done?'<span class="pill done">done</span>':''}</div>
+        <div class="ti-meta">weight ${g.weight} · streak ${currentStreak}d → ${pct.toFixed(0)}%</div></div>
+        <div class="ti-val"><span class="bloom">${bloomSVG(pct)}</span>${fmt(piv*pct/100)}</div>
+      </div>`;
+    });
+    weeklyGoalsFn().forEach(g=>{
+      any = true;
+      const done = !!(completions.weekly[g.id] && completions.weekly[g.id][currentWeekStart]);
+      const piv = perInstanceValue(g, dates);
+      const currentStreak = weeklyStreakAt(g.id, done ? currentWeekStart : isoDate(new Date(startOfWeek(today).getTime()-7*86400000)));
+      const projectedStreak = done ? currentStreak : currentStreak+1;
+      const pct = multiplierPct(projectedStreak, HABIT_WEEKS);
+      html += `<div class="today-item">
+        <input type="checkbox" class="leaf-check" data-kind="weekly" data-goal="${g.id}" data-date="${currentWeekStart}" ${done?'checked':''}>
+        <div><div class="ti-name">${escapeHtml(g.name)}<span class="pill freq">weekly</span>${done?'<span class="pill done">done this week</span>':''}</div>
+        <div class="ti-meta">weight ${g.weight} · streak ${currentStreak}wk → ${pct.toFixed(0)}%</div></div>
+        <div class="ti-val"><span class="bloom">${bloomSVG(pct)}</span>${fmt(piv*pct/100)}</div>
+      </div>`;
+    });
+    if(!any) html += `<div class="empty-note">no goals planted yet — add one below.</div>`;
+    html += `</div>`;
+
+    html += `<div class="quick-add" id="quickAddFlash">
+      <input type="text" id="qaName" placeholder="new goal name…" maxlength="60">
+      <select id="qaFreq">
+        <option value="daily">daily</option>
+        <option value="weekly">weekly</option>
+      </select>
+      <input type="number" id="qaWeight" min="1" max="10" step="1" value="2" title="weight (priority)">
+      <button class="add-goal-btn" id="qaAddBtn">+ add</button>
+    </div>`;
+
+    const dailyGoals = dGoals;
+    if(dailyGoals.length){
+      html += `<div class="section-title">daily ledger</div><div class="section-vine">${vineSVG('#C97B5A')}</div>`;
+      html += `<div class="week-nav"><button id="prevPeriod">&larr; prev</button><div class="period-label">${periodLabel(dates)}</div><button id="nextPeriod" ${weekOffset>=0?'disabled':''}>next &rarr;</button></div>`;
+      html += `<table class="ledger"><thead><tr><th>date</th>`;
+      dailyGoals.forEach(g=> html += `<th>${escapeHtml(g.name)}</th>`);
+      html += `<th class="stamp-cell">✓</th><th style="text-align:right">earned</th></tr></thead><tbody>`;
+      dates.forEach(d=>{
+        const ds = isoDate(d); const isFuture = d > today;
+        let dayVal=0, doneCount=0, rowCells='';
+        dailyGoals.forEach(g=>{
+          const done = !!(completions.daily[g.id] && completions.daily[g.id][ds]);
+          if(done){ doneCount++; const piv=perInstanceValue(g,dates); dayVal += piv*multiplierPct(dailyStreakAt(g.id,ds),HABIT_DAYS)/100; }
+          rowCells += `<td class="goal-cell"><input type="checkbox" class="goal-check" data-kind="daily" data-goal="${g.id}" data-date="${ds}" ${done?'checked':''} ${isFuture?'disabled':''}></td>`;
+        });
+        html += `<tr><td class="date-cell ${ds===todayStr?'today':''}">${d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})}</td>${rowCells}<td class="stamp-cell">${doneCount===dailyGoals.length && dailyGoals.length>0?'<span class="stamp">'+stampSVG()+'</span>':''}</td><td class="day-earn">${dayVal>0?fmt(dayVal):'—'}</td></tr>`;
+      });
+      html += `</tbody></table>`;
+    }
+
+    const weeklyGoals = weeklyGoalsFn();
+    if(weeklyGoals.length){
+      html += `<div class="section-title">weekly ledger</div><div class="section-vine">${vineSVG('#C97B5A')}</div>`;
+      html += `<table class="ledger"><thead><tr><th>week of</th>`;
+      weeklyGoals.forEach(g=> html += `<th>${escapeHtml(g.name)}</th>`);
+      html += `<th style="text-align:right">earned</th></tr></thead><tbody>`;
+      weekStarts.forEach(ws=>{
+        const wss = isoDate(ws); const isFuture = ws > today;
+        let wVal=0, rowCells='';
+        weeklyGoals.forEach(g=>{
+          const done = !!(completions.weekly[g.id] && completions.weekly[g.id][wss]);
+          if(done){ const piv=perInstanceValue(g,dates); wVal += piv*multiplierPct(weeklyStreakAt(g.id,wss),HABIT_WEEKS)/100; }
+          rowCells += `<td class="goal-cell"><input type="checkbox" class="goal-check" data-kind="weekly" data-goal="${g.id}" data-date="${wss}" ${done?'checked':''} ${isFuture?'disabled':''}></td>`;
+        });
+        html += `<tr><td class="date-cell">${ws.toLocaleDateString(undefined,{month:'short',day:'numeric'})}</td>${rowCells}<td class="day-earn">${wVal>0?fmt(wVal):'—'}</td></tr>`;
+      });
+      html += `</tbody></table>`;
+    }
+
+    html += `<div class="cashout-row">
+      <button class="util-btn" id="exportBtn">⤓ export csv</button>
+      <button class="cashout-btn" id="cashOutBtn" ${total<=0?'disabled':''}>cash out ${fmt(total)} as fun money</button>
+    </div>`;
+
+    html += `<details class="settings" ${editingSettings?'open':''} id="settingsDetails"><summary>tend your goals &amp; budget</summary>
+      <div class="setup-grid">
+        <div><label>period</label><select id="periodType">
+          <option value="week" ${settings.periodType==='week'?'selected':''}>weekly</option>
+          <option value="month" ${settings.periodType==='month'?'selected':''}>monthly</option>
+        </select></div>
+        <div><label>max budget ($)</label><input type="number" id="periodBudget" min="0" step="1" value="${settings.periodBudget}"></div>
+        <div><label>perfect-week bonus (%)</label><input type="number" id="perfectBonusPct" min="0" max="100" step="1" value="${settings.perfectBonusPct}"></div>
+      </div>
+      <div class="budget-hint">the budget is a ceiling — even a perfect period across every goal can't earn more than this. the perfect-week bonus pays out automatically when every daily goal is completed 7 days in a row.</div>
+      <label>goals</label>
+      <div class="goals-editor" id="goalsEditor">
+        ${settings.goals.map(g=>{
+          const piv = perInstanceValue(g, dates);
+          const statsLine = g.frequency==='daily'
+            ? '≈ '+fmt(piv)+'/day at full ('+HABIT_DAYS+'-day) streak'
+            : '≈ '+fmt(piv)+'/week at full ('+HABIT_WEEKS+'-week) streak';
+          return `<div class="goal-row" data-id="${g.id}">
+            <input type="text" class="g-name" value="${escapeHtml(g.name)}" placeholder="goal name" ${g.id==='todos-complete'?'title="linked to your To-Dos page — renaming is fine, but keep it as a daily goal"':''}>
+            <select class="g-freq">
+              <option value="daily" ${g.frequency==='daily'?'selected':''}>daily</option>
+              <option value="weekly" ${g.frequency==='weekly'?'selected':''}>weekly</option>
+            </select>
+            <input type="number" class="g-weight" min="1" max="10" step="1" value="${g.weight||1}" placeholder="weight">
+            <button class="icon-btn remove-goal" title="remove">×</button>
+            <div class="g-stats">${statsLine}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <button class="add-goal-btn" id="addGoal">+ plant a new goal</button><br>
+      <div class="weight-note">each goal's value comes from its weight's share of the ${settings.periodType}'s budget (1 = low priority, 3+ = high — any number works).</div>
+      <button class="save-btn" id="saveSettingsBtn">save settings</button>
+    </details>`;
+
+    app.innerHTML = html;
+    attachHandlers(dates);
+  }
+
+  function safeRender(){
+    try{ render(); }
+    catch(e){
+      console.error('Ledger render error:', e);
+      app.innerHTML = '<div class="empty-note">Something went wrong redrawing the ledger: '+escapeHtml(e.message)+'. Your data is still saved — try reopening this artifact. If it keeps happening, screenshot this message.</div>';
+    }
+  }
+
+  function attachHandlers(dates){
+    document.querySelectorAll('input[data-kind="daily"], input[data-kind="weekly"]').forEach(cb=>{
+      cb.addEventListener('change', async (ev)=>{
+        const kind=ev.target.dataset.kind, goalId=ev.target.dataset.goal, ds=ev.target.dataset.date;
+        completions[kind][goalId] = completions[kind][goalId] || {};
+        completions[kind][goalId][ds] = ev.target.checked;
+        checkAndClaimPerfectBonus();
+        await saveCompletions(); safeRender();
+      });
+    });
+    const prev=document.getElementById('prevPeriod'), next=document.getElementById('nextPeriod');
+    if(prev) prev.addEventListener('click', ()=>{ weekOffset-=1; safeRender(); });
+    if(next) next.addEventListener('click', ()=>{ if(weekOffset<0){ weekOffset+=1; safeRender(); } });
+
+    const cashOutBtn = document.getElementById('cashOutBtn');
+    if(cashOutBtn) cashOutBtn.addEventListener('click', async ()=>{
+      const { total } = computePeriodTotals(dates);
+      if(total>0){ await cashOut(total); alert(fmt(total)+' added to your fun-money total. Go treat yourself.'); }
+    });
+    const exportBtn = document.getElementById('exportBtn');
+    if(exportBtn) exportBtn.addEventListener('click', csvExport);
+
+    const details = document.getElementById('settingsDetails');
+    if(details) details.addEventListener('toggle', ()=>{ editingSettings = details.open; });
+
+    const addGoalBtn = document.getElementById('addGoal');
+    if(addGoalBtn) addGoalBtn.addEventListener('click', ()=>{
+      settings.goals.push({id:'g'+Date.now(), name:'New goal', frequency:'daily', weight:2});
+      editingSettings = true; safeRender();
+    });
+
+    function submitQuickAdd(){
+      const nameInp = document.getElementById('qaName');
+      const freqSel = document.getElementById('qaFreq');
+      const weightInp = document.getElementById('qaWeight');
+      const name = nameInp.value.trim();
+      if(!name){ nameInp.focus(); nameInp.style.borderColor = '#C97B5A'; return; }
+      const id = 'g'+Date.now();
+      settings.goals.push({ id, name, frequency: freqSel.value, weight: parseFloat(weightInp.value)||1 });
+      lastAddedGoalId = id;
+      saveSettings();
+      safeRender();
+    }
+    const qaAddBtn = document.getElementById('qaAddBtn');
+    if(qaAddBtn) qaAddBtn.addEventListener('click', submitQuickAdd);
+    const qaName = document.getElementById('qaName');
+    if(qaName) qaName.addEventListener('keydown', (ev)=>{ if(ev.key==='Enter') submitQuickAdd(); });
+
+    if(lastAddedGoalId){
+      const el = document.querySelector(`input[data-goal="${lastAddedGoalId}"]`);
+      const card = el ? el.closest('.today-item') : null;
+      if(card){
+        card.classList.add('just-added');
+        if(typeof card.scrollIntoView === 'function'){
+          card.scrollIntoView({behavior:'smooth', block:'center'});
+        }
+      }
+      lastAddedGoalId = null;
+    }
+
+    document.querySelectorAll('.remove-goal').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const row = btn.closest('.goal-row'); const id = row.dataset.id;
+        settings.goals = settings.goals.filter(g=>g.id!==id);
+        editingSettings = true; safeRender();
+      });
+    });
+    document.querySelectorAll('.goal-row').forEach(row=>{
+      const id = row.dataset.id; const g = settings.goals.find(x=>x.id===id);
+      if(!g) return;
+      const nameInp = row.querySelector('.g-name');
+      if(nameInp) nameInp.addEventListener('input', ()=>{ g.name = nameInp.value; });
+      const freqSel = row.querySelector('.g-freq');
+      if(freqSel) freqSel.addEventListener('change', ()=>{ g.frequency = freqSel.value; editingSettings=true; safeRender(); });
+      const weightInp = row.querySelector('.g-weight');
+      if(weightInp) weightInp.addEventListener('input', ()=>{ g.weight = parseFloat(weightInp.value)||1; });
+    });
+    const saveBtn = document.getElementById('saveSettingsBtn');
+    if(saveBtn) saveBtn.addEventListener('click', async ()=>{
+      settings.periodType = document.getElementById('periodType').value;
+      settings.periodBudget = parseFloat(document.getElementById('periodBudget').value)||0;
+      settings.perfectBonusPct = parseFloat(document.getElementById('perfectBonusPct').value)||0;
+      settings.goals = settings.goals.filter(g=>g.name && g.name.trim().length>0);
+      editingSettings = false;
+      await saveSettings(); safeRender();
+    });
+  }
+
+  window.hubRequireAuth(loadData);
+
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', ()=>{
+      navigator.serviceWorker.register('sw.js').catch(e => console.error('SW registration failed:', e));
+    });
+  }
+})();
+</script>
+</body>
+</html>

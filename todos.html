@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>To-Dos — Wildflower Hub</title>
+<link rel="stylesheet" href="theme.css">
+<link rel="icon" type="image/png" href="icon-192.png">
+<script>window.HUB_ACTIVE = 'todos';</script>
+<style>
+  .todo-list{ display:flex; flex-direction:column; gap:9px; margin: 18px 0; }
+  .todo-item{ display:flex; align-items:center; gap:12px; background:#fffdf8; border:1px solid var(--ink-line); border-radius:0; padding:11px 15px; }
+  .todo-item.is-done .ti-name{ text-decoration: line-through; color: var(--muted); }
+  .leaf-check{
+    appearance:none; -webkit-appearance:none; width:22px; height:22px; min-width:22px;
+    border-radius: 0;
+    border: 2px solid var(--moss-deep); background:#fff; cursor:pointer; position:relative;
+    transition: transform 0.1s;
+  }
+  .leaf-check:hover{ border-color: var(--rose); }
+  .leaf-check:active{ transform: scale(0.9); }
+  .leaf-check:checked{ background: var(--moss); border-color: var(--moss-deep); }
+  .leaf-check:checked::after{ content:'✓'; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; font-weight:bold; }
+  .ti-name{ flex:1; font-weight:700; font-size:14.5px; color: var(--bark); }
+  .goal-tag{ display:inline-block; margin-left:7px; font-family:'JetBrains Mono',monospace; font-weight:500; font-size:9.5px; text-transform:lowercase; letter-spacing:0.2px;
+    background:transparent; color: var(--lavender); border:1px solid var(--lavender); padding:1px 6px; border-radius:0; vertical-align:middle; }
+  .goal-tag::before{ content:'#'; }
+  .goal-tag:hover{ background: var(--lavender); color:#fff; text-decoration:none; }
+  .ti-remove{ background:transparent; border:none; color: var(--clay); cursor:pointer; font-size:16px; padding:2px 6px; }
+  .add-row{ display:flex; gap:8px; margin-top: 6px; }
+  .add-row input{ flex:1; font-size:13.5px; padding:10px 12px; border:1px solid var(--ink-line); border-radius:0; background:#fff; color: var(--bark); }
+  .add-row button{ background: var(--moss); color:#fff; border:none; font-weight:700; font-size:13px; padding:0 18px; border-radius:0; cursor:pointer; }
+  .add-row button:hover{ background: var(--moss-deep); }
+  .connect-box{ text-align:center; padding: 34px 20px; }
+  .connect-btn{ background: var(--moss); color:#fff; border:none; font-weight:700; font-size:14px; padding:12px 24px; border-radius:0; cursor:pointer; margin-top:14px; }
+  .connect-btn:hover{ background: var(--moss-deep); }
+  .status-line{ font-family:'JetBrains Mono',monospace; font-size:11.5px; color: var(--muted); margin-top: 10px; }
+  .all-done-banner{ background:#fffdf8; border:1px solid var(--moss); border-radius:0; padding:12px 18px; margin-bottom:14px; font-family:'Fraunces',serif; font-style:italic; font-size:16px; color: var(--moss-deep); }
+</style>
+</head>
+<body>
+<div class="book">
+  <div class="cover"><div id="hub-nav"></div></div>
+  <div class="pages">
+    <h1>To-Dos</h1>
+    <p class="empty-note">Today's errands, homework, and chores. Finish everything here and the Ledger's "Complete all to-dos" goal marks itself done automatically.</p>
+
+    <div id="app" class="card" style="margin-top:20px;">
+      <div class="empty-note">loading…</div>
+    </div>
+
+    <h2 style="margin-top:28px;">Weekly To-Dos</h2>
+    <p class="empty-note" style="margin-top:-6px;">Things to get to sometime this week — separate from the daily list, doesn't need a specific day.</p>
+    <div id="weeklyApp" class="card">
+      <div class="empty-note">loading…</div>
+    </div>
+  </div>
+</div>
+
+<script src="nav.js"></script>
+<script src="hub-auth.js"></script>
+<script src="quick-capture.js"></script>
+<script>
+(function(){
+  // ---- Supabase (shared credentials with the Ledger — anon key, safe client-side) ----
+  const SUPABASE_URL = 'https://trwprtzbcuoqydgjphpr.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_4CT647Bp6_UUUd4ipLOAmA_D5Z8Ml1Z';
+
+  // ---- This hub's Edge Function (handles the Google token exchange) ----
+  const EDGE_FN_URL = `${SUPABASE_URL}/functions/v1/google-tasks-auth`;
+  const GOOGLE_CLIENT_ID = '767676843739-43cgjkmulhjgnjdvah3v6qkkbn1h2ott.apps.googleusercontent.com';
+  const REDIRECT_URI = 'https://hub.coradenning.site/todos.html';
+  const SCOPE = 'https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly';
+
+  const app = document.getElementById('app');
+  const weeklyApp = document.getElementById('weeklyApp');
+  const isoDate = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const todayStr = isoDate(new Date());
+  function mondayOf(d){ const date=new Date(d); const day=(date.getDay()+6)%7; date.setDate(date.getDate()-day); date.setHours(0,0,0,0); return isoDate(date); }
+  const thisMondayStr = mondayOf(new Date());
+
+  async function callEdgeFn(body){
+    const res = await fetch(EDGE_FN_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'apikey': SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if(!res.ok || data.error){
+      throw new Error(data.error ? data.error + (data.detail ? ': ' + JSON.stringify(data.detail) : '') : ('HTTP '+res.status));
+    }
+    return data;
+  }
+
+  // Serialize writes to the shared completions record so this page and the
+  // Ledger page never race each other on the same key (same fix as the
+  // Ledger's own save-chain).
+  let _saveChain = Promise.resolve();
+  function syncLedgerGoal(allDone){
+    _saveChain = _saveChain.then(async ()=>{
+      try{
+        const v = await window.hubGet('completions');
+        const completions = v ? JSON.parse(v) : { daily:{}, weekly:{}, perfectBonuses:{} };
+        completions.daily = completions.daily || {};
+        completions.daily['todos-complete'] = completions.daily['todos-complete'] || {};
+        completions.daily['todos-complete'][todayStr] = allDone;
+        await window.hubSet('completions', JSON.stringify(completions));
+      } catch(e){ console.error('Ledger sync failed:', e); }
+    });
+    return _saveChain;
+  }
+
+  function buildAuthUrl(){
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      scope: SCOPE,
+      access_type: 'offline',
+      prompt: 'consent',
+      include_granted_scopes: 'true'
+    });
+    return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+  }
+
+  function renderConnect(message){
+    app.innerHTML = `
+      <div class="connect-box">
+        <p class="empty-note">${message || "Connect Google Tasks to see today's list here."}</p>
+        <button class="connect-btn" id="connectBtn">[ connect google tasks ]</button>
+      </div>`;
+    document.getElementById('connectBtn').addEventListener('click', ()=>{
+      window.location.href = buildAuthUrl();
+    });
+  }
+
+  function renderError(msg){
+    app.innerHTML = `<div class="empty-note">Something went wrong: ${msg}. Try refreshing — your tasks are safe in Google Tasks either way.</div>`;
+  }
+
+  const TASKS_BASE = 'https://tasks.googleapis.com/tasks/v1';
+  const TASKS_API = `${TASKS_BASE}/lists/@default/tasks`;
+  const WEEKLY_LIST_TITLE = 'Weekly To-Dos (Wildflower Hub)';
+
+  async function fetchTasks(accessToken, listId){
+    listId = listId || '@default';
+    const res = await fetch(`${TASKS_BASE}/lists/${listId}/tasks?showCompleted=true&showHidden=true&maxResults=100`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if(!res.ok) throw new Error('Google Tasks fetch failed: '+res.status);
+    const data = await res.json();
+    return data.items || [];
+  }
+
+  async function setTaskStatus(accessToken, taskId, done, listId){
+    listId = listId || '@default';
+    const res = await fetch(`${TASKS_BASE}/lists/${listId}/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: done ? 'completed' : 'needsAction' })
+    });
+    if(!res.ok) throw new Error('Google Tasks update failed: '+res.status);
+  }
+
+  async function addTask(accessToken, title, listId){
+    listId = listId || '@default';
+    const res = await fetch(`${TASKS_BASE}/lists/${listId}/tasks`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title })
+    });
+    if(!res.ok) throw new Error('Google Tasks add failed: '+res.status);
+  }
+
+  async function deleteTask(accessToken, taskId, listId){
+    listId = listId || '@default';
+    const res = await fetch(`${TASKS_BASE}/lists/${listId}/tasks/${taskId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if(!res.ok && res.status !== 404) throw new Error('Google Tasks delete failed: '+res.status);
+  }
+
+  // Daily items scheduled for a future day (by the Planner) exist in Google
+  // Tasks already but shouldn't show up here until that day arrives.
+  function isVisibleToday(task){
+    if(!task.due) return true;
+    return task.due.slice(0,10) <= todayStr;
+  }
+
+  let _weeklyListIdPromise = null;
+  async function getWeeklyListId(accessToken){
+    if(_weeklyListIdPromise) return _weeklyListIdPromise;
+    _weeklyListIdPromise = (async ()=>{
+      const res = await fetch(`${TASKS_BASE}/users/@me/lists`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if(!res.ok) throw new Error('Could not load task lists: '+res.status);
+      const data = await res.json();
+      const existing = (data.items||[]).find(l=>l.title===WEEKLY_LIST_TITLE);
+      if(existing) return existing.id;
+      const createRes = await fetch(`${TASKS_BASE}/users/@me/lists`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: WEEKLY_LIST_TITLE })
+      });
+      if(!createRes.ok) throw new Error('Could not create Weekly To-Dos list: '+createRes.status);
+      const created = await createRes.json();
+      return created.id;
+    })();
+    return _weeklyListIdPromise;
+  }
+
+  // At the start of a new week, clear out completed tasks from both lists
+  // so things don't pile up. Runs at most once per week, tracked via
+  // hub-data so it doesn't matter which device notices first.
+  async function runWeeklyCleanupIfNeeded(accessToken, weeklyListId){
+    try{
+      const stored = await window.hubGet('todos_cleanup');
+      const marker = stored ? JSON.parse(stored) : {};
+      if(marker.lastCleanupWeek === thisMondayStr) return;
+
+      const [dailyTasks, weeklyTasks] = await Promise.all([
+        fetchTasks(accessToken, '@default'),
+        fetchTasks(accessToken, weeklyListId)
+      ]);
+      const dailyDone = dailyTasks.filter(t=>t.status==='completed');
+      const weeklyDone = weeklyTasks.filter(t=>t.status==='completed');
+      await Promise.all([
+        ...dailyDone.map(t=>deleteTask(accessToken, t.id, '@default').catch(()=>{})),
+        ...weeklyDone.map(t=>deleteTask(accessToken, t.id, weeklyListId).catch(()=>{}))
+      ]);
+      await window.hubSet('todos_cleanup', JSON.stringify({ lastCleanupWeek: thisMondayStr }));
+      window.hubCacheClear('tasks_list');
+      window.hubCacheClear('weekly_tasks_list');
+    } catch(e){ console.error('weekly cleanup failed:', e); }
+  }
+
+  function escapeHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  // ---- goal links: taskId -> goal title, so tasks can show which goal they belong to ----
+  let goalLinkMap = {};
+  async function loadGoalLinks(){
+    try{
+      const v = await window.hubGet('goals_board');
+      const cards = (v ? JSON.parse(v).cards : null) || [];
+      const map = {};
+      cards.forEach(c=>{ (c.linkedTasks||[]).forEach(l=>{ map[l.id] = c.title; }); });
+      goalLinkMap = map;
+    } catch(e){ goalLinkMap = {}; }
+  }
+  function goalTagHtml(taskId){
+    const title = goalLinkMap[taskId];
+    return title ? `<a href="goals.html" class="goal-tag" title="linked to this goal">${escapeHtml(title)}</a>` : '';
+  }
+
+  function paintTasks(tasks, accessToken, meta){
+    meta = meta || {};
+    const activeCount = tasks.filter(t=>t.status!=='completed').length;
+    const allDone = tasks.length>0 && activeCount===0;
+
+    let html = '';
+    if(allDone) html += `<div class="all-done-banner">everything's tended — the ledger will mark itself done</div>`;
+    html += `<div class="todo-list">`;
+    if(tasks.length===0){
+      html += `<div class="empty-note">nothing on the list — add something below.</div>`;
+    }
+    tasks.forEach(t=>{
+      const done = t.status==='completed';
+      html += `<div class="todo-item ${done?'is-done':''}" data-id="${t.id}">
+        <input type="checkbox" class="leaf-check" ${done?'checked':''}>
+        <div class="ti-name">${escapeHtml(t.title||'(untitled)')}${goalTagHtml(t.id)}</div>
+        <button class="ti-remove" title="remove">×</button>
+      </div>`;
+    });
+    html += `</div>`;
+    const statusExtra = meta.checking ? ' <span class="ai-spinner" style="width:11px;height:11px;vertical-align:-1px;"></span> checking for updates…'
+      : (meta.cached ? ` · loaded from cache (${window.hubCacheAgeLabel(meta.ts)})` : '');
+    html += `<div class="add-row">
+      <input type="text" id="newTaskInput" placeholder="add a task…" maxlength="200">
+      <button id="addTaskBtn">+ add</button>
+    </div>
+    <div class="status-line">connected to Google Tasks · ${tasks.length} task${tasks.length!==1?'s':''}${statusExtra} · <a href="#" id="reconnectLink">reconnect to update permissions</a></div>`;
+
+    app.innerHTML = html;
+    document.getElementById('reconnectLink').addEventListener('click', (ev)=>{
+      ev.preventDefault();
+      window.location.href = buildAuthUrl();
+    });
+    if(!meta.checking) syncLedgerGoal(allDone);
+
+    app.querySelectorAll('.todo-item').forEach(row=>{
+      const id = row.dataset.id;
+      row.querySelector('.leaf-check').addEventListener('change', async (ev)=>{
+        try{ await setTaskStatus(accessToken, id, ev.target.checked); }
+        catch(e){ console.error(e); }
+        loadAndRenderTasks(accessToken, true);
+      });
+      row.querySelector('.ti-remove').addEventListener('click', async ()=>{
+        try{ await deleteTask(accessToken, id); }
+        catch(e){ console.error(e); }
+        loadAndRenderTasks(accessToken, true);
+      });
+    });
+    const addBtn = document.getElementById('addTaskBtn');
+    const input = document.getElementById('newTaskInput');
+    async function submitAdd(){
+      const title = input.value.trim();
+      if(!title) return;
+      input.disabled = true;
+      try{ await addTask(accessToken, title); }
+      catch(e){ console.error(e); }
+      loadAndRenderTasks(accessToken, true);
+    }
+    addBtn.addEventListener('click', submitAdd);
+    input.addEventListener('keydown', ev=>{ if(ev.key==='Enter') submitAdd(); });
+  }
+
+  // Cache-then-revalidate: paint whatever's cached immediately (feels
+  // instant), then quietly check Google Tasks in the background and only
+  // repaint if something actually changed — no flicker on an unchanged list.
+  async function loadAndRenderTasks(accessToken, skipCache){
+    const cached = skipCache ? null : window.hubCacheRead('tasks_list');
+    if(cached){
+      paintTasks(cached.data, accessToken, { cached: true, ts: cached.ts, checking: true });
+    } else {
+      app.innerHTML = `<div class="ai-loading"><span class="ai-spinner"></span> loading your tasks…</div>`;
+    }
+
+    let tasks;
+    try{ tasks = (await fetchTasks(accessToken)).filter(isVisibleToday); }
+    catch(e){
+      if(cached) return; // keep showing the cached list rather than an error
+      renderError(e.message);
+      return;
+    }
+
+    const changed = !cached || JSON.stringify(tasks) !== JSON.stringify(cached.data);
+    window.hubCacheWrite('tasks_list', tasks);
+    if(changed || !cached) paintTasks(tasks, accessToken, { cached: false });
+  }
+
+  function paintWeeklyTasks(tasks, accessToken, weeklyListId, meta){
+    meta = meta || {};
+    let html = `<div class="todo-list">`;
+    if(tasks.length===0){
+      html += `<div class="empty-note">nothing on the weekly list yet.</div>`;
+    }
+    tasks.forEach(t=>{
+      const done = t.status==='completed';
+      html += `<div class="todo-item ${done?'is-done':''}" data-id="${t.id}">
+        <input type="checkbox" class="leaf-check" ${done?'checked':''}>
+        <div class="ti-name">${escapeHtml(t.title||'(untitled)')}${goalTagHtml(t.id)}</div>
+        <button class="ti-remove" title="remove">×</button>
+      </div>`;
+    });
+    html += `</div>`;
+    const statusExtra = meta.checking ? ' <span class="ai-spinner" style="width:11px;height:11px;vertical-align:-1px;"></span> checking for updates…'
+      : (meta.cached ? ` · loaded from cache (${window.hubCacheAgeLabel(meta.ts)})` : '');
+    html += `<div class="add-row">
+      <input type="text" id="newWeeklyTaskInput" placeholder="add something for this week…" maxlength="200">
+      <button id="addWeeklyTaskBtn">+ add</button>
+    </div>
+    <div class="status-line">${tasks.length} item${tasks.length!==1?'s':''}${statusExtra} · clears completed items automatically each Monday</div>`;
+
+    weeklyApp.innerHTML = html;
+    weeklyApp.querySelectorAll('.todo-item').forEach(row=>{
+      const id = row.dataset.id;
+      row.querySelector('.leaf-check').addEventListener('change', async (ev)=>{
+        try{ await setTaskStatus(accessToken, id, ev.target.checked, weeklyListId); }
+        catch(e){ console.error(e); }
+        loadAndRenderWeeklyTasks(accessToken, weeklyListId, true);
+      });
+      row.querySelector('.ti-remove').addEventListener('click', async ()=>{
+        try{ await deleteTask(accessToken, id, weeklyListId); }
+        catch(e){ console.error(e); }
+        loadAndRenderWeeklyTasks(accessToken, weeklyListId, true);
+      });
+    });
+    const addBtn = document.getElementById('addWeeklyTaskBtn');
+    const input = document.getElementById('newWeeklyTaskInput');
+    async function submitAdd(){
+      const title = input.value.trim();
+      if(!title) return;
+      input.disabled = true;
+      try{ await addTask(accessToken, title, weeklyListId); }
+      catch(e){ console.error(e); }
+      loadAndRenderWeeklyTasks(accessToken, weeklyListId, true);
+    }
+    addBtn.addEventListener('click', submitAdd);
+    input.addEventListener('keydown', ev=>{ if(ev.key==='Enter') submitAdd(); });
+  }
+
+  async function loadAndRenderWeeklyTasks(accessToken, weeklyListId, skipCache){
+    const cached = skipCache ? null : window.hubCacheRead('weekly_tasks_list');
+    if(cached){
+      paintWeeklyTasks(cached.data, accessToken, weeklyListId, { cached: true, ts: cached.ts, checking: true });
+    } else {
+      weeklyApp.innerHTML = `<div class="ai-loading"><span class="ai-spinner"></span> loading…</div>`;
+    }
+
+    let tasks;
+    try{ tasks = await fetchTasks(accessToken, weeklyListId); }
+    catch(e){
+      if(cached) return;
+      weeklyApp.innerHTML = `<div class="empty-note">Couldn't load the weekly list — try refreshing.</div>`;
+      return;
+    }
+
+    const changed = !cached || JSON.stringify(tasks) !== JSON.stringify(cached.data);
+    window.hubCacheWrite('weekly_tasks_list', tasks);
+    if(changed || !cached) paintWeeklyTasks(tasks, accessToken, weeklyListId, { cached: false });
+  }
+
+  async function getFreshAccessToken(){
+    const result = await callEdgeFn({ action: 'access_token' });
+    if(!result.connected) return null;
+    return result.access_token;
+  }
+
+  async function init(){
+    // If we're bouncing back from Google with an auth code, exchange it first.
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if(code){
+      app.innerHTML = `<div class="empty-note">connecting to Google Tasks…</div>`;
+      try{
+        await callEdgeFn({ action: 'exchange', code });
+      } catch(e){
+        renderError('could not finish connecting — ' + e.message);
+        return;
+      }
+      // Clean the code out of the URL so a refresh doesn't re-submit it.
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    let token;
+    try{ token = await getFreshAccessToken(); }
+    catch(e){ renderConnect("Couldn't reach the connection service — try again in a moment."); return; }
+
+    if(!token){ renderConnect(); return; }
+
+    await loadGoalLinks();
+
+    let weeklyListId;
+    try{ weeklyListId = await getWeeklyListId(token); }
+    catch(e){ weeklyApp.innerHTML = `<div class="empty-note">Couldn't set up the weekly list — try refreshing.</div>`; weeklyListId = null; }
+
+    if(weeklyListId) await runWeeklyCleanupIfNeeded(token, weeklyListId);
+
+    loadAndRenderTasks(token);
+    if(weeklyListId) loadAndRenderWeeklyTasks(token, weeklyListId);
+  }
+
+  window.hubRequireAuth(init);
+})();
+</script>
+</body>
+</html>

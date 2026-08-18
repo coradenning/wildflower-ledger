@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Budget — Wildflower Hub</title>
+<link rel="stylesheet" href="theme.css">
+<link rel="icon" type="image/png" href="icon-192.png">
+<script>window.HUB_ACTIVE = 'budget';</script>
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<style>
+  .insight-card{ background:#fffdf8; border:1px solid var(--ink-line); border-radius:0; padding:16px 20px; margin: 14px 0; }
+  .insight-card ul{ margin:6px 0 0; padding-left:18px; font-size:13.5px; line-height:1.7; color: var(--bark); }
+
+  .budget-tabs{ display:flex; gap:6px; margin: 16px 0 4px; flex-wrap:wrap; }
+  .budget-tab{ background:#fffdf8; border:1px solid var(--ink-line); border-radius:0; padding:7px 15px; font-weight:700; font-size:11.5px; color: var(--muted); cursor:pointer; text-transform:lowercase; }
+  .budget-tab:hover{ border-color: var(--rose); }
+  .budget-tab.is-active{ background: var(--moss); color:#fff; border-color: var(--moss); }
+  .tab-panel{ display:none; margin-top:14px; }
+  .tab-panel.is-active{ display:block; }
+
+  .chart-card{ background:#fffdf8; border:1px solid var(--ink-line); border-radius:0; padding:16px 18px; margin-bottom:14px; }
+  .chart-card h3{ font-family:'Fraunces',serif; font-style:italic; font-weight:700; font-size:15px; color: var(--forest); margin:0 0 10px; text-transform:lowercase; }
+  .charts-row{ display:grid; grid-template-columns: 1.3fr 1fr; gap:14px; }
+  @media (max-width: 700px){ .charts-row{ grid-template-columns: 1fr; } }
+  .donut-legend{ display:flex; flex-direction:column; gap:5px; margin-top:10px; }
+  .donut-legend-item{ display:flex; align-items:center; gap:7px; font-family:'JetBrains Mono',monospace; font-size:11px; color: var(--bark); }
+  .donut-legend-dot{ width:8px; height:8px; border-radius:0; flex-shrink:0; }
+
+  .limit-row{ display:flex; align-items:center; gap:12px; background:#fffdf8; border:1px solid var(--ink-line); border-radius:0; padding:11px 15px; margin-bottom:8px; }
+  .limit-name{ width:110px; font-weight:700; font-size:13px; color: var(--bark); text-transform:lowercase; flex-shrink:0; }
+  .limit-bar-track{ flex:1; height:8px; background:#eee2c4; border-radius:0; overflow:hidden; }
+  .limit-bar-fill{ height:100%; background: var(--moss); border-radius:0; transition: width 0.3s; }
+  .limit-bar-fill.over{ background: var(--clay); }
+  .limit-bar-fill.close{ background: var(--honey); }
+  .limit-amounts{ font-family:'JetBrains Mono',monospace; font-size:11px; color: var(--muted); white-space:nowrap; min-width:88px; text-align:right; }
+  .limit-input{ width:64px !important; font-size:12px !important; padding:5px 7px !important; }
+
+  .txn-filters{ display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  .txn-filters input, .txn-filters select{ font-size:12px; padding:7px 11px; border:1px solid var(--ink-line); border-radius:0; background:#fff; }
+  .txn-filters input{ flex:1; min-width:140px; }
+  .txn-list{ display:flex; flex-direction:column; gap:7px; margin: 10px 0; }
+  .txn-row{ display:flex; align-items:center; gap:12px; background:#fffdf8; border:1px solid var(--ink-line); border-radius:0; padding:9px 15px; }
+  .txn-merchant{ flex:1; font-weight:700; font-size:13.5px; color: var(--bark); }
+  .txn-cat{ font-family:'JetBrains Mono',monospace; font-size:9.5px; text-transform:lowercase; letter-spacing:0.2px; color: var(--muted); background:transparent; border:1px solid var(--parchment-line); padding:2px 7px; border-radius:0; }
+  .txn-date{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color: var(--muted); min-width:60px; }
+  .txn-amt{ font-family:'Fraunces',serif; font-style:italic; font-weight:700; font-size:15px; color: var(--moss-deep); min-width:65px; text-align:right; }
+  .txn-amt.income{ color: var(--moss); }
+
+  .settings-row{ display:flex; align-items:center; justify-content:space-between; gap:14px; background:#fffdf8; border:1px solid var(--ink-line); border-radius:0; padding:14px 16px; margin-bottom:10px; }
+  .settings-row .sr-label{ font-weight:700; font-size:13.5px; color: var(--bark); text-transform:lowercase; }
+  .settings-row .sr-desc{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color: var(--muted); margin-top:2px; }
+  .settings-row input[type=number]{ width:100px; font-size:13px; padding:7px 10px; border:1px solid var(--ink-line); border-radius:0; }
+  .danger-btn{ background:#fff; border:1px solid var(--clay); color: var(--clay); font-weight:700; font-size:12px; padding:8px 14px; border-radius:0; cursor:pointer; text-transform:lowercase; }
+  .danger-btn:hover{ background: var(--clay); color:#fff; }
+
+  .connect-box{ text-align:center; padding: 34px 20px; }
+  .connect-btn{ background: var(--moss); color:#fff; border:none; font-weight:700; font-size:14px; padding:12px 24px; border-radius:0; cursor:pointer; margin-top:14px; }
+  .connect-btn:hover{ background: var(--moss-deep); }
+  .status-line{ font-family:'JetBrains Mono',monospace; font-size:11px; color: var(--muted); margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="book">
+  <div class="cover"><div id="hub-nav"></div></div>
+  <div class="pages">
+    <h1>Budget</h1>
+    <p class="empty-note">Ally, via Plaid — where your money's actually going, and whether it's on track.</p>
+
+    <div class="balance-row" id="summaryRow" style="display:none; margin-top:18px;">
+      <div class="balance-card spend">
+        <div class="label">spent this week</div>
+        <div class="value" id="weekSpend">$0</div>
+        <div class="sub" id="weekSpendDelta"></div>
+      </div>
+      <div class="balance-card">
+        <div class="label">saved this week</div>
+        <div class="value" id="weekSaved">$0</div>
+        <div class="sub" id="weekSavedDelta"></div>
+      </div>
+      <div class="balance-card">
+        <div class="label">spent this month</div>
+        <div class="value" id="monthSpend">$0</div>
+      </div>
+    </div>
+
+    <div id="insightArea"></div>
+
+    <div class="budget-tabs" id="budgetTabs" style="display:none;">
+      <button class="budget-tab is-active" data-tab="overview">overview</button>
+      <button class="budget-tab" data-tab="categories">categories</button>
+      <button class="budget-tab" data-tab="transactions">transactions</button>
+      <button class="budget-tab" data-tab="settings">settings</button>
+    </div>
+
+    <div id="app">
+      <div class="empty-note">loading…</div>
+    </div>
+  </div>
+</div>
+
+<script src="nav.js"></script>
+<script src="hub-auth.js"></script>
+<script src="quick-capture.js"></script>
+<script>
+(function(){
+  const SUPABASE_URL = 'https://trwprtzbcuoqydgjphpr.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_4CT647Bp6_UUUd4ipLOAmA_D5Z8Ml1Z';
+  const PLAID_FN_URL = `${SUPABASE_URL}/functions/v1/plaid-sync`;
+  const AI_FN_URL = `${SUPABASE_URL}/functions/v1/ai-summarize`;
+
+  const app = document.getElementById('app');
+  const insightArea = document.getElementById('insightArea');
+  const summaryRow = document.getElementById('summaryRow');
+  const budgetTabs = document.getElementById('budgetTabs');
+
+  const CHART_COLORS = ['#5C7A52','#D6A94A','#C97B5A','#A78BC9','#3B5636','#8a7d64','#e0c98a'];
+
+  async function callFn(url, body){
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON_KEY}`, apikey: SUPABASE_ANON_KEY },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if(!res.ok || data.error) throw new Error(data.error ? data.error + (data.detail?': '+JSON.stringify(data.detail):'') : ('HTTP '+res.status));
+    return data;
+  }
+
+  function fmt(n){ return (n<0?'-$':'$') + Math.abs(n).toFixed(2); }
+  function escapeHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function categoryLabel(c){ return (c||'other').replace(/_/g,' ').toLowerCase(); }
+  function isTransfer(t){ const c = t.personal_finance_category && t.personal_finance_category.primary; return c==='TRANSFER_IN'||c==='TRANSFER_OUT'; }
+  function daysAgo(n){ const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-n); return d; }
+  function mondayOf(d){ const date=new Date(d); const day=(date.getDay()+6)%7; date.setDate(date.getDate()-day); date.setHours(0,0,0,0); return date; }
+
+  function sumInRange(transactions, from, to, wantIncome){
+    return transactions
+      .filter(t=>!isTransfer(t))
+      .filter(t=>{ const d = new Date(t.date); return d>=from && d<to; })
+      .filter(t=> wantIncome ? t.amount < 0 : t.amount > 0)
+      .reduce((sum,t)=> sum + Math.abs(t.amount), 0);
+  }
+
+  function renderConnect(message){
+    summaryRow.style.display = 'none';
+    insightArea.innerHTML = '';
+    budgetTabs.style.display = 'none';
+    app.innerHTML = `
+      <div class="connect-box">
+        <p class="empty-note">${message || "Connect your Ally account to see transactions here."}</p>
+        <button class="connect-btn" id="connectBtn">[ connect a bank ]</button>
+      </div>`;
+    document.getElementById('connectBtn').addEventListener('click', startLink);
+  }
+  function renderError(msg){
+    summaryRow.style.display = 'none';
+    app.innerHTML = `<div class="empty-note">Something went wrong: ${msg}. Try refreshing.</div>`;
+  }
+
+  async function startLink(){
+    let linkResult;
+    try{ linkResult = await callFn(PLAID_FN_URL, { action: 'link_token' }); }
+    catch(e){ renderError(e.message); return; }
+    if(!linkResult.link_token){ renderError('could not get a link token'); return; }
+    const handler = Plaid.create({
+      token: linkResult.link_token,
+      onSuccess: async (public_token) => {
+        app.innerHTML = `<div class="empty-note">connecting your account…</div>`;
+        try{ await callFn(PLAID_FN_URL, { action: 'exchange', public_token }); await loadEverything(); }
+        catch(e){ renderError(e.message); }
+      },
+      onExit: () => {}
+    });
+    handler.open();
+  }
+
+  let prefs = { limits:{}, savingsGoal: 0 };
+  async function loadPrefs(){
+    try{
+      const v = await window.hubGet('budget_prefs');
+      prefs = (v ? JSON.parse(v) : null) || { limits:{}, savingsGoal: 0 };
+      prefs.limits = prefs.limits || {};
+    } catch(e){ prefs = { limits:{}, savingsGoal: 0 }; }
+  }
+  async function savePrefs(){ await window.hubSet('budget_prefs', JSON.stringify(prefs)); }
+
+  // ---- charts (hand-drawn SVG, matching the site's palette) ----
+  function weeklySpendSeries(transactions, weeks){
+    const series = [];
+    for(let i=weeks-1;i>=0;i--){
+      const start = mondayOf(new Date()); start.setDate(start.getDate() - i*7);
+      const end = new Date(start); end.setDate(start.getDate()+7);
+      const total = sumInRange(transactions, start, end, false);
+      series.push({ label: start.toLocaleDateString(undefined,{month:'short',day:'numeric'}), total, isCurrent: i===0 });
+    }
+    return series;
+  }
+
+  function trendChartSVG(series){
+    const w = 560, h = 150, padBottom = 22, padTop = 10, barGap = 10;
+    const max = Math.max(1, ...series.map(s=>s.total));
+    const barW = (w - barGap*(series.length-1)) / series.length;
+    let bars = '';
+    series.forEach((s, i)=>{
+      const barH = Math.max(2, ((h-padBottom-padTop) * s.total) / max);
+      const x = i*(barW+barGap);
+      const y = h - padBottom - barH;
+      bars += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="4" fill="${s.isCurrent?'var(--honey)':'var(--moss)'}"/>`;
+      bars += `<text x="${x+barW/2}" y="${h-6}" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="JetBrains Mono">${s.label}</text>`;
+      if(s.total>0) bars += `<text x="${x+barW/2}" y="${y-4}" text-anchor="middle" font-size="9" fill="var(--bark)" font-family="JetBrains Mono" font-weight="700">$${Math.round(s.total)}</text>`;
+    });
+    return `<svg viewBox="0 0 ${w} ${h}" style="width:100%; height:auto;">${bars}</svg>`;
+  }
+
+  function donutChartSVG(categoryTotals){
+    const entries = Object.entries(categoryTotals).sort((a,b)=>b[1]-a[1]);
+    const top = entries.slice(0,5);
+    const otherTotal = entries.slice(5).reduce((s,[,v])=>s+v,0);
+    if(otherTotal>0) top.push(['other categories', otherTotal]);
+    const total = top.reduce((s,[,v])=>s+v,0);
+    if(total<=0) return { svg: '', legend: [] };
+
+    const r = 46, cx = 60, cy = 60, circumference = 2*Math.PI*r;
+    let offset = 0, segs = '';
+    const legend = [];
+    top.forEach(([cat, val], i)=>{
+      const color = CHART_COLORS[i % CHART_COLORS.length];
+      const frac = val/total;
+      const dash = frac*circumference;
+      segs += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="18" stroke-dasharray="${dash} ${circumference-dash}" stroke-dashoffset="${-offset}" transform="rotate(-90 ${cx} ${cy})"/>`;
+      offset += dash;
+      legend.push({ label: cat==='other categories'?cat:categoryLabel(cat), color, val, pct: Math.round(frac*100) });
+    });
+    const svg = `<svg viewBox="0 0 120 120" style="width:130px; height:130px;">${segs}<circle cx="${cx}" cy="${cy}" r="30" fill="var(--parchment,#F6F0DE)"/></svg>`;
+    return { svg, legend };
+  }
+
+  function renderLimits(monthCategoryTotals){
+    const cats = Object.keys(monthCategoryTotals).sort((a,b)=>monthCategoryTotals[b]-monthCategoryTotals[a]).slice(0,10);
+    if(cats.length===0) return '<p class="empty-note">no categorized spending yet this month.</p>';
+    let html = '';
+    cats.forEach(cat=>{
+      const spent = monthCategoryTotals[cat];
+      const limit = prefs.limits[cat] || 0;
+      const pct = limit>0 ? Math.min(100, (spent/limit)*100) : 0;
+      const barClass = limit>0 && spent>limit ? 'over' : (limit>0 && pct>85 ? 'close' : '');
+      html += `<div class="limit-row">
+        <div class="limit-name">${escapeHtml(categoryLabel(cat))}</div>
+        <div class="limit-bar-track"><div class="limit-bar-fill ${barClass}" style="width:${limit>0?pct:0}%;"></div></div>
+        <div class="limit-amounts">${fmt(spent)}${limit>0?' / '+fmt(limit):''}</div>
+        <input type="number" class="limit-input" data-cat="${cat}" placeholder="limit" min="0" step="10" value="${limit||''}">
+      </div>`;
+    });
+    html += `<p class="empty-note">set a monthly limit per category — leave blank for no limit.</p>`;
+    return html;
+  }
+
+  function renderTransactionsList(transactions, filterText, filterCat){
+    let filtered = transactions;
+    if(filterCat) filtered = filtered.filter(t=>((t.personal_finance_category&&t.personal_finance_category.primary)||'other')===filterCat);
+    if(filterText) filtered = filtered.filter(t=>(t.merchant_name||t.name||'').toLowerCase().includes(filterText.toLowerCase()));
+
+    if(filtered.length === 0) return '<p class="empty-note">no matching transactions.</p>';
+    let html = `<div class="txn-list">`;
+    filtered.slice(0, 60).forEach(t=>{
+      const isIncome = t.amount < 0;
+      const transfer = isTransfer(t);
+      const category = (t.personal_finance_category && t.personal_finance_category.primary) || 'other';
+      html += `<div class="txn-row" style="${transfer?'opacity:0.55;':''}">
+        <div class="txn-date">${t.date}</div>
+        <div class="txn-merchant">${escapeHtml(t.merchant_name || t.name || 'transaction')}</div>
+        <div class="txn-cat">${transfer ? 'transfer (excluded)' : escapeHtml(categoryLabel(category))}</div>
+        <div class="txn-amt ${isIncome?'income':''}">${isIncome?'+':''}${fmt(Math.abs(t.amount))}</div>
+      </div>`;
+    });
+    html += `</div>`;
+    if(filtered.length > 60) html += `<div class="status-line">showing 60 of ${filtered.length} matching</div>`;
+    return html;
+  }
+
+  async function renderInsights(budgetData){
+    insightArea.innerHTML = `<div class="ai-loading"><span class="ai-spinner"></span> thinking it over…</div>`;
+    try{
+      const result = await callFn(AI_FN_URL, { task: 'budget_summary', budgetData });
+      const bullets = (result.summary||'').split('\n').map(l=>l.replace(/^[-•\s]+/,'').trim()).filter(Boolean);
+      insightArea.innerHTML = `
+        <div class="insight-card">
+          <div class="accent-script" style="font-size:17px; margin-bottom:2px;">how it's looking</div>
+          <ul>${bullets.map(b=>`<li>${escapeHtml(b)}</li>`).join('')}</ul>
+        </div>`;
+    } catch(e){ insightArea.innerHTML = ''; }
+  }
+
+  let currentTab = 'overview';
+  let currentTransactions = [];
+  let txnFilterText = '', txnFilterCat = '';
+
+  function switchTab(tab){
+    currentTab = tab;
+    document.querySelectorAll('.budget-tab').forEach(b=>b.classList.toggle('is-active', b.dataset.tab===tab));
+    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('is-active', p.id==='panel-'+tab));
+  }
+
+  function paintTabs(monthCategoryTotals, weekSpend, weekSaved, monthSpend, transactions){
+    const trend = weeklySpendSeries(transactions, 6);
+    const donut = donutChartSVG(monthCategoryTotals);
+    const savingsGoal = prefs.savingsGoal || 0;
+    const savingsPct = savingsGoal>0 ? Math.min(100, Math.round((weekSaved/savingsGoal)*100)) : null;
+
+    app.innerHTML = `
+      <div class="tab-panel is-active" id="panel-overview">
+        <div class="charts-row">
+          <div class="chart-card">
+            <h3>weekly spend, last 6 weeks</h3>
+            ${trendChartSVG(trend)}
+          </div>
+          <div class="chart-card">
+            <h3>this month, by category</h3>
+            ${donut.svg ? `<div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap;">${donut.svg}
+              <div class="donut-legend">${donut.legend.map(l=>`<div class="donut-legend-item"><span class="donut-legend-dot" style="background:${l.color}"></span>${escapeHtml(l.label)} — ${l.pct}%</div>`).join('')}</div>
+            </div>` : `<p class="empty-note">no spending yet this month.</p>`}
+          </div>
+        </div>
+        ${savingsGoal>0 ? `<div class="chart-card">
+          <h3>weekly savings goal</h3>
+          <div class="limit-bar-track" style="height:12px;"><div class="limit-bar-fill" style="width:${savingsPct}%; background:${weekSaved>=savingsGoal?'var(--moss)':'var(--honey)'};"></div></div>
+          <p class="empty-note" style="margin-top:6px; padding:0;">${fmt(weekSaved)} of ${fmt(savingsGoal)} this week (${savingsPct}%)</p>
+        </div>` : ''}
+      </div>
+
+      <div class="tab-panel" id="panel-categories">
+        ${renderLimits(monthCategoryTotals)}
+      </div>
+
+      <div class="tab-panel" id="panel-transactions">
+        <div class="txn-filters">
+          <input type="text" id="txnSearch" placeholder="search by merchant…" value="${escapeHtml(txnFilterText)}">
+          <select id="txnCatFilter">
+            <option value="">all categories</option>
+            ${Object.keys(monthCategoryTotals).sort().map(c=>`<option value="${c}" ${txnFilterCat===c?'selected':''}>${escapeHtml(categoryLabel(c))}</option>`).join('')}
+          </select>
+        </div>
+        <div id="txnListArea">${renderTransactionsList(transactions, txnFilterText, txnFilterCat)}</div>
+      </div>
+
+      <div class="tab-panel" id="panel-settings">
+        <div class="settings-row">
+          <div>
+            <div class="sr-label">weekly savings goal</div>
+            <div class="sr-desc">shown as a progress bar on the overview tab — leave at 0 to hide it.</div>
+          </div>
+          <input type="number" id="savingsGoalInput" min="0" step="10" value="${prefs.savingsGoal||''}">
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="sr-label">re-sync now</div>
+            <div class="sr-desc">force a fresh pull from Plaid instead of waiting for the cache to expire.</div>
+          </div>
+          <button class="danger-btn" id="resyncBtn" style="border-color:var(--moss); color:var(--moss);">re-sync</button>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="sr-label">disconnect bank</div>
+            <div class="sr-desc">removes the connection to Ally. You can reconnect any time.</div>
+          </div>
+          <button class="danger-btn" id="disconnectBtn">disconnect</button>
+        </div>
+      </div>
+    `;
+
+    document.querySelectorAll('.limit-input').forEach(input=>{
+      input.addEventListener('change', async ()=>{
+        const cat = input.dataset.cat;
+        const val = parseFloat(input.value);
+        if(val>0) prefs.limits[cat] = val; else delete prefs.limits[cat];
+        try{ await savePrefs(); } catch(e){ console.error(e); }
+      });
+    });
+    document.getElementById('txnSearch').addEventListener('input', (ev)=>{
+      txnFilterText = ev.target.value;
+      document.getElementById('txnListArea').innerHTML = renderTransactionsList(transactions, txnFilterText, txnFilterCat);
+    });
+    document.getElementById('txnCatFilter').addEventListener('change', (ev)=>{
+      txnFilterCat = ev.target.value;
+      document.getElementById('txnListArea').innerHTML = renderTransactionsList(transactions, txnFilterText, txnFilterCat);
+    });
+    document.getElementById('savingsGoalInput').addEventListener('change', async (ev)=>{
+      prefs.savingsGoal = parseFloat(ev.target.value) || 0;
+      try{ await savePrefs(); paintTabs(monthCategoryTotals, weekSpend, weekSaved, monthSpend, transactions); }
+      catch(e){ console.error(e); }
+    });
+    document.getElementById('resyncBtn').addEventListener('click', async ()=>{
+      window.hubCacheClear('plaid_transactions');
+      await loadEverything();
+    });
+    document.getElementById('disconnectBtn').addEventListener('click', async ()=>{
+      if(!confirm('Disconnect Ally? You can reconnect any time from this page.')) return;
+      try{ await callFn(PLAID_FN_URL, { action: 'disconnect' }); window.hubCacheClear('plaid_transactions'); renderConnect(); }
+      catch(e){ renderError(e.message); }
+    });
+
+    switchTab(currentTab);
+  }
+
+  function paintBudget(transactions, meta){
+    meta = meta || {};
+    summaryRow.style.display = 'flex';
+    budgetTabs.style.display = 'flex';
+    currentTransactions = transactions;
+
+    const now = new Date();
+    const weekStart = daysAgo(7), lastWeekStart = daysAgo(14);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const weekSpend = sumInRange(transactions, weekStart, now, false);
+    const lastWeekSpend = sumInRange(transactions, lastWeekStart, weekStart, false);
+    const weekIncome = sumInRange(transactions, weekStart, now, true);
+    const lastWeekIncome = sumInRange(transactions, lastWeekStart, weekStart, true);
+    const weekSaved = weekIncome - weekSpend;
+    const lastWeekSaved = lastWeekIncome - lastWeekSpend;
+    const monthSpend = sumInRange(transactions, monthStart, now, false);
+
+    document.getElementById('weekSpend').textContent = fmt(weekSpend);
+    document.getElementById('weekSpendDelta').textContent = lastWeekSpend>0 ? ((weekSpend-lastWeekSpend)>=0?'+':'') + fmt(weekSpend-lastWeekSpend) + ' vs last week' : '';
+    document.getElementById('weekSaved').textContent = fmt(weekSaved);
+    document.getElementById('weekSavedDelta').textContent = ((weekSaved-lastWeekSaved)>=0?'+':'') + fmt(weekSaved-lastWeekSaved) + ' vs last week';
+    document.getElementById('monthSpend').textContent = fmt(monthSpend);
+
+    const monthCategoryTotals = {};
+    transactions
+      .filter(t=>!isTransfer(t))
+      .filter(t=>{ const d=new Date(t.date); return d>=monthStart && d<=now && t.amount>0; })
+      .forEach(t=>{
+        const cat = (t.personal_finance_category && t.personal_finance_category.primary) || 'other';
+        monthCategoryTotals[cat] = (monthCategoryTotals[cat]||0) + t.amount;
+      });
+
+    paintTabs(monthCategoryTotals, weekSpend, weekSaved, monthSpend, transactions);
+
+    renderInsights({
+      weekSpend: Math.round(weekSpend*100)/100,
+      lastWeekSpend: Math.round(lastWeekSpend*100)/100,
+      weekSaved: Math.round(weekSaved*100)/100,
+      lastWeekSaved: Math.round(lastWeekSaved*100)/100,
+      monthSpend: Math.round(monthSpend*100)/100,
+      categoryTotalsThisMonth: monthCategoryTotals,
+      categoryLimits: prefs.limits,
+      savingsGoal: prefs.savingsGoal || null
+    });
+  }
+
+  async function loadEverything(){
+    await loadPrefs();
+
+    const cached = window.hubCacheRead('plaid_transactions');
+    if(cached){
+      paintBudget(cached.data, { cached: true, ts: cached.ts, checking: true });
+    } else {
+      app.innerHTML = `<div class="ai-loading"><span class="ai-spinner"></span> fetching transactions…</div>`;
+    }
+
+    let result;
+    try{ result = await callFn(PLAID_FN_URL, { action: 'transactions' }); }
+    catch(e){
+      if(cached) return;
+      renderError(e.message); return;
+    }
+    if(!result.connected){ renderConnect(); return; }
+
+    const transactions = result.transactions || [];
+    const changed = !cached || JSON.stringify(transactions) !== JSON.stringify(cached.data);
+    window.hubCacheWrite('plaid_transactions', transactions);
+    if(changed || !cached) paintBudget(transactions, { cached: false });
+  }
+
+  document.querySelectorAll('.budget-tab').forEach(btn=>{
+    btn.addEventListener('click', ()=>switchTab(btn.dataset.tab));
+  });
+
+  async function init(){
+    let status;
+    try{ status = await callFn(PLAID_FN_URL, { action: 'status' }); }
+    catch(e){ renderConnect("Couldn't reach the connection service — try again in a moment."); return; }
+    if(!status.connected){ renderConnect(); return; }
+    loadEverything();
+  }
+
+  window.hubRequireAuth(init);
+})();
+</script>
+</body>
+</html>

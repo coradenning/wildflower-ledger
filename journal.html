@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Journal — Wildflower Hub</title>
+<link rel="stylesheet" href="theme.css">
+<link rel="icon" type="image/png" href="icon-192.png">
+<script>window.HUB_ACTIVE = 'journal';</script>
+<style>
+  .mood-picker{ display:flex; gap:10px; margin: 10px 0 16px; flex-wrap:wrap; }
+  .mood-btn{
+    display:flex; flex-direction:column; align-items:center; gap:5px; background:#fffdf8;
+    border:1px solid var(--ink-line); border-radius:0; padding:9px 12px; cursor:pointer;
+    font-family:'JetBrains Mono',monospace; font-size:10px; color: var(--muted); transition: border-color 0.12s;
+    text-transform:lowercase;
+  }
+  .mood-btn:hover{ border-color: var(--rose); }
+  .mood-btn.selected{ border-color: var(--mood-color, var(--moss)); color: var(--bark); font-weight:700; }
+  .mood-dot{ width:22px; height:22px; border-radius:60% 40% 55% 45% / 55% 45% 55% 45%; background: var(--mood-color); }
+
+  .tag-row{ display:flex; gap:7px; flex-wrap:wrap; margin-bottom:16px; }
+  .tag-chip{
+    font-family:'JetBrains Mono',monospace; font-size:10.5px; padding:5px 11px; border-radius:0;
+    border:1px solid var(--ink-line); background:#fff; color: var(--muted); cursor:pointer; text-transform:lowercase;
+  }
+  .tag-chip::before{ content:'#'; }
+  .tag-chip.selected{ background: var(--honey); color:#fff; border-color: var(--honey); }
+
+  #entryText{ width:100%; min-height:120px; font-family:'Source Serif 4',serif; font-size:13.5px; padding:12px 14px;
+    border:1px solid var(--ink-line); border-radius:0; background:#fffdf8; color: var(--bark); resize:vertical; }
+  .save-row{ display:flex; align-items:center; justify-content:space-between; margin-top:10px; flex-wrap:wrap; gap:8px; }
+  .save-btn{ background: var(--moss); color:#fff; border:none; font-weight:700; font-size:13px; padding:10px 20px; border-radius:0; cursor:pointer; text-transform:lowercase; }
+  .save-btn:hover{ background: var(--moss-deep); }
+
+  .garden-grid{ display:grid; grid-template-columns: repeat(7, 1fr); gap:8px; margin: 14px 0; max-width:340px; }
+  .garden-dot{
+    aspect-ratio:1; cursor:pointer; border: none; background:transparent; padding:2px;
+    border-radius:50%; transition: transform 0.15s;
+  }
+  .garden-dot:hover{ transform: scale(1.2); }
+  .garden-dot.is-today{ background: rgba(47,66,50,0.08); outline: 1.5px solid var(--forest); outline-offset:0px; }
+  .editing-label{ font-family:'JetBrains Mono',monospace; font-size:11px; color: var(--rose); }
+</style>
+</head>
+<body>
+<div class="book">
+  <div class="cover"><div id="hub-nav"></div></div>
+  <div class="pages">
+    <h1>Journal</h1>
+    <p class="empty-note">A quiet daily note, plus a little garden of how the days have felt.</p>
+    <div id="app"><div class="loading">unrolling the parchment…</div></div>
+  </div>
+</div>
+
+<script src="nav.js"></script>
+<script src="hub-auth.js"></script>
+<script src="quick-capture.js"></script>
+<script>
+(function(){
+  const MOODS = [
+    { key:'struggling', label:'struggling', color:'#8a7d64' },
+    { key:'low',        label:'low',        color:'#C97B5A' },
+    { key:'okay',       label:'okay',       color:'#D6A94A' },
+    { key:'good',       label:'good',       color:'#5C7A52' },
+    { key:'great',      label:'great',      color:'#A78BC9' },
+  ];
+  const TAG_OPTIONS = ['productive','tired','grateful','anxious','calm','stressed','excited','lonely','proud','overwhelmed'];
+
+  const app = document.getElementById('app');
+  const isoDate = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const todayStr = isoDate(new Date());
+
+  function escapeHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  let entries = {}; // { 'YYYY-MM-DD': { text, mood, tags:[] } }
+  let editingDate = todayStr;
+
+  function entryFor(dateStr){ return entries[dateStr] || { text:'', mood:null, tags:[] }; }
+
+  function bloomDotSVG(color, hasEntry){
+    const petals = 5;
+    let ps = '';
+    for(let i=0;i<petals;i++){
+      const angle = (360/petals)*i;
+      ps += `<ellipse cx="11" cy="4.5" rx="2.7" ry="4.2" fill="${color}" transform="rotate(${angle} 11 11)"/>`;
+    }
+    const center = hasEntry ? '#D6A94A' : '#d8cba3';
+    return `<svg viewBox="0 0 22 22" width="100%" height="100%">${ps}<circle cx="11" cy="11" r="2.3" fill="${center}"/></svg>`;
+  }
+
+  async function save(){ await window.hubSet('journal', JSON.stringify({ entries })); }
+
+  function last28Days(){
+    const days = [];
+    const cursor = new Date();
+    for(let i=27;i>=0;i--){
+      const d = new Date(cursor); d.setDate(cursor.getDate()-i);
+      days.push(isoDate(d));
+    }
+    return days;
+  }
+
+  function render(){
+    const entry = entryFor(editingDate);
+    const moodColor = entry.mood ? MOODS.find(m=>m.key===entry.mood).color : null;
+
+    let html = '';
+    if(editingDate !== todayStr){
+      html += `<div class="editing-label">&gt; editing ${editingDate} · <a href="#" id="backToToday">back to today</a></div>`;
+    }
+
+    html += `<div class="mood-picker">`;
+    MOODS.forEach(m=>{
+      const sel = entry.mood===m.key;
+      html += `<button class="mood-btn ${sel?'selected':''}" data-mood="${m.key}" style="--mood-color:${m.color}">
+        <span class="mood-dot" style="--mood-color:${m.color}"></span>${m.label}
+      </button>`;
+    });
+    html += `</div>`;
+
+    html += `<div class="tag-row">`;
+    TAG_OPTIONS.forEach(t=>{
+      const sel = (entry.tags||[]).includes(t);
+      html += `<button class="tag-chip ${sel?'selected':''}" data-tag="${t}">${t}</button>`;
+    });
+    html += `</div>`;
+
+    html += `<textarea id="entryText" placeholder="what happened today…">${escapeHtml(entry.text)}</textarea>`;
+    html += `<div class="save-row">
+      <button class="save-btn" id="saveEntryBtn">save entry</button>
+      <span class="empty-note" id="savedNote" style="padding:0;"></span>
+    </div>`;
+
+    html += `<div class="section-title" style="margin-top:26px;">your garden</div>
+      <p class="empty-note" style="margin-top:-6px;">last 28 days — click a bloom to revisit that day</p>`;
+    html += `<div class="garden-grid">`;
+    last28Days().forEach(ds=>{
+      const e = entries[ds];
+      const hasEntry = !!(e && e.mood);
+      const color = hasEntry ? MOODS.find(m=>m.key===e.mood).color : '#e9ddc0';
+      html += `<button class="garden-dot ${ds===todayStr?'is-today':''}" data-date="${ds}" title="${ds}${hasEntry?' · '+e.mood:''}">${bloomDotSVG(color, hasEntry)}</button>`;
+    });
+    html += `</div>`;
+
+    app.innerHTML = html;
+
+    if(editingDate !== todayStr){
+      document.getElementById('backToToday').addEventListener('click', (ev)=>{ ev.preventDefault(); editingDate = todayStr; render(); });
+    }
+    app.querySelectorAll('.mood-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        entries[editingDate] = { ...entryFor(editingDate), mood: btn.dataset.mood };
+        render();
+      });
+    });
+    app.querySelectorAll('.tag-chip').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const tag = btn.dataset.tag;
+        const current = entryFor(editingDate).tags || [];
+        const next = current.includes(tag) ? current.filter(t=>t!==tag) : [...current, tag];
+        entries[editingDate] = { ...entryFor(editingDate), tags: next };
+        render();
+      });
+    });
+    document.getElementById('saveEntryBtn').addEventListener('click', async ()=>{
+      const text = document.getElementById('entryText').value;
+      entries[editingDate] = { ...entryFor(editingDate), text };
+      const note = document.getElementById('savedNote');
+      note.textContent = 'saving…';
+      try{ await save(); note.textContent = 'saved ✓'; }
+      catch(e){ note.textContent = 'could not save — try again'; }
+      setTimeout(()=>{ if(note) note.textContent=''; }, 2500);
+    });
+    document.getElementById('entryText').addEventListener('blur', async (ev)=>{
+      const currentDate = editingDate;
+      const text = ev.target.value;
+      if(text === entryFor(currentDate).text) return; // nothing changed, skip the write
+      entries[currentDate] = { ...entryFor(currentDate), text };
+      try{ await save(); } catch(e){ console.error('journal autosave failed:', e); }
+    });
+    app.querySelectorAll('.garden-dot').forEach(dot=>{
+      dot.addEventListener('click', ()=>{
+        editingDate = dot.dataset.date;
+        render();
+      });
+    });
+  }
+
+  async function init(){
+    try{
+      const v = await window.hubGet('journal');
+      entries = (v ? JSON.parse(v).entries : null) || {};
+    } catch(e){
+      app.innerHTML = `<div class="empty-note">Couldn't load your journal — try refreshing.</div>`;
+      return;
+    }
+    render();
+  }
+
+  window.hubRequireAuth(init);
+})();
+</script>
+</body>
+</html>

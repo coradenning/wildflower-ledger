@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Planner — Wildflower Hub</title>
+<link rel="stylesheet" href="theme.css">
+<link rel="icon" type="image/png" href="icon-192.png">
+<script>window.HUB_ACTIVE = 'planner';</script>
+<style>
+  .week-nav{ display:flex; align-items:center; justify-content:space-between; margin: 14px 0 18px; }
+  .week-nav button{ background:#fffdf8; border:1px solid var(--ink-line); border-radius:0; padding:7px 14px; font-weight:700; font-size:12.5px; color: var(--forest); cursor:pointer; }
+  .week-nav button:hover{ border-color: var(--rose); }
+  .week-nav .week-label{ font-family:'Fraunces',serif; font-style:italic; font-size:16px; color: var(--forest); }
+
+  .day-grid{ display:grid; grid-template-columns: repeat(7, 1fr); gap:10px; margin: 10px 0 22px; }
+  .day-col{ background:#fffdf8; border:1px solid var(--ink-line); border-radius:0; padding:10px; display:flex; flex-direction:column; gap:7px; min-height:170px; }
+  .day-col.is-today{ border-color: var(--moss); box-shadow: 0 0 0 1.5px var(--moss) inset; background:#fefef8; }
+  .day-col h4{ font-family:'Fraunces',serif; font-style:italic; font-size:13.5px; color: var(--forest); margin:0; text-align:center; text-transform:lowercase; }
+
+  .day-events{ display:flex; flex-direction:column; gap:4px; }
+  .day-event{
+    font-family:'JetBrains Mono',monospace; font-size:10px; color: var(--forest); padding:3px 6px 3px 7px; line-height:1.35;
+    border-left: 2.5px solid var(--honey); background: #fbf3de;
+    border-radius: 0;
+  }
+  .day-event .ev-time{ font-weight:700; opacity:0.75; }
+  .day-divider{ height:1px; background: var(--ink-line); margin:1px 0; }
+
+  .day-todos{ display:flex; flex-direction:column; gap:5px; }
+  .day-todo{ display:flex; align-items:flex-start; gap:6px; font-size:11px; color: var(--bark); }
+  .day-todo .mini-check{
+    appearance:none; -webkit-appearance:none; width:12px; height:12px; min-width:12px; margin-top:1px;
+    border-radius:0; border:1.6px solid var(--moss-deep); background:#fff; cursor:pointer; position:relative;
+  }
+  .day-todo .mini-check:checked{ background: var(--moss); border-color: var(--moss-deep); }
+  .day-todo .mini-check:checked::after{ content:'✓'; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:9px; }
+  .day-todo.is-done .todo-label{ text-decoration: line-through; color: var(--muted); }
+  .day-todo.is-muted .todo-label{ color: var(--muted); font-style:italic; }
+  .day-todo .todo-label{ flex:1; }
+  .goal-tag{ display:inline-block; margin-left:5px; font-family:'JetBrains Mono',monospace; font-weight:500; letter-spacing:0.1px;
+    background:transparent; color: var(--lavender); border:1px solid var(--lavender); padding:0 5px; border-radius:0; vertical-align:middle; font-size:8.5px; }
+  .goal-tag::before{ content:'#'; }
+
+  .day-add{ margin-top:auto; padding-top:4px; }
+  .day-add input{ width:100%; box-sizing:border-box; font-size:10.5px; padding:5px 6px; border:1px solid var(--ink-line); border-radius:0; }
+
+  .below-grid{ display:grid; grid-template-columns: 1.1fr 1fr; gap:20px; align-items:start; }
+  @media (max-width: 700px){ .below-grid{ grid-template-columns: 1fr; } }
+
+  .mini-label{ font-family:'JetBrains Mono',monospace; font-size:11px; color: var(--rose); margin-bottom:6px; text-transform:lowercase; }
+  .mini-label::before{ content:'$ '; }
+
+  .weekly-list{ display:flex; flex-direction:column; gap:6px; margin-bottom:8px; }
+  .weekly-item{ display:flex; align-items:center; gap:9px; background:#fffdf8; border:1px solid var(--ink-line); border-radius:0; padding:8px 11px; }
+  .weekly-item .ti-name{ flex:1; font-size:13px; font-weight:600; color: var(--bark); }
+  .weekly-item.is-done .ti-name{ text-decoration: line-through; color: var(--muted); }
+  .weekly-item .ti-remove{ background:transparent; border:none; color: var(--clay); cursor:pointer; font-size:14px; }
+  .weekly-add-row{ display:flex; gap:7px; }
+  .weekly-add-row input{ flex:1; font-size:13px; padding:8px 11px; border:1px solid var(--ink-line); border-radius:0; }
+  .weekly-add-row button{ background: var(--moss); color:#fff; border:none; font-weight:700; font-size:12.5px; padding:0 14px; border-radius:0; cursor:pointer; }
+  .weekly-add-row button:hover{ background: var(--moss-deep); }
+
+  #weekNoteText{ width:100%; min-height:150px; box-sizing:border-box; font-family:'Source Serif 4',serif; font-size:13.5px; padding:12px 14px;
+    border:1px solid var(--ink-line); border-radius:0; background:#fffdf8; color: var(--bark); resize:vertical; }
+
+  @media (max-width: 760px){ .day-grid{ grid-template-columns: repeat(7, minmax(100px,1fr)); overflow-x:auto; } }
+</style>
+</head>
+<body>
+<div class="book">
+  <div class="cover"><div id="hub-nav"></div></div>
+  <div class="pages">
+    <h1>Weekly Planner</h1>
+
+    <div class="week-nav">
+      <button id="prevWeekBtn">← prev</button>
+      <span class="week-label" id="weekLabel"></span>
+      <button id="nextWeekBtn">next →</button>
+    </div>
+
+    <div id="dayGrid" class="day-grid"></div>
+
+    <div class="below-grid">
+      <div>
+        <div class="mini-label">weekly to-dos</div>
+        <div id="weeklyList" class="weekly-list"><div class="empty-note">loading…</div></div>
+        <div class="weekly-add-row">
+          <input type="text" id="weeklyInput" placeholder="add something for this week…" maxlength="200">
+          <button id="weeklyAddBtn">+ add</button>
+        </div>
+      </div>
+      <div>
+        <div class="mini-label">notes</div>
+        <textarea id="weekNoteText" placeholder="anything worth jotting down for the week…"></textarea>
+        <div class="empty-note" id="noteSavedNote" style="padding-top:4px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="nav.js"></script>
+<script src="hub-auth.js"></script>
+<script src="quick-capture.js"></script>
+<script>
+(function(){
+  const SUPABASE_URL = 'https://trwprtzbcuoqydgjphpr.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_4CT647Bp6_UUUd4ipLOAmA_D5Z8Ml1Z';
+  const AUTH_FN_URL = `${SUPABASE_URL}/functions/v1/google-tasks-auth`;
+  const TASKS_BASE = 'https://tasks.googleapis.com/tasks/v1';
+  const WEEKLY_LIST_TITLE = 'Weekly To-Dos (Wildflower Hub)';
+  const CALENDAR_LIST_API = 'https://www.googleapis.com/calendar/v3/users/me/calendarList';
+  const CALENDAR_EVENTS_API = (calId) => `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`;
+  const GOOGLE_CLIENT_ID = '767676843739-43cgjkmulhjgnjdvah3v6qkkbn1h2ott.apps.googleusercontent.com';
+  const REDIRECT_URI = 'https://hub.coradenning.site/todos.html';
+
+  const isoDate = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const todayStr = isoDate(new Date());
+  function mondayOf(d){ const date=new Date(d); const day=(date.getDay()+6)%7; date.setDate(date.getDate()-day); date.setHours(0,0,0,0); return date; }
+
+  let weekOffset = 0;
+  let accessToken = null;
+  let weeklyListId = null;
+
+  function escapeHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  let goalLinkMap = {};
+  async function loadGoalLinks(){
+    try{
+      const v = await window.hubGet('goals_board');
+      const cards = (v ? JSON.parse(v).cards : null) || [];
+      const map = {};
+      cards.forEach(c=>{ (c.linkedTasks||[]).forEach(l=>{ map[l.id] = c.title; }); });
+      goalLinkMap = map;
+    } catch(e){ goalLinkMap = {}; }
+  }
+  function goalTagHtml(taskId){
+    const title = goalLinkMap[taskId];
+    return title ? `<span class="goal-tag" title="linked to this goal">${escapeHtml(title)}</span>` : '';
+  }
+
+  async function callEdgeFn(body){
+    const res = await fetch(AUTH_FN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if(!res.ok || data.error) throw new Error(data.error || ('HTTP '+res.status));
+    return data;
+  }
+
+  function buildAuthUrl(){
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID, redirect_uri: REDIRECT_URI, response_type: 'code',
+      scope: 'https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly',
+      access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true'
+    });
+    return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+  }
+
+  function renderConnectMessage(){
+    document.getElementById('dayGrid').innerHTML = `
+      <div class="empty-note" style="grid-column: 1 / -1; text-align:center; padding:20px;">
+        Connect Google first from the <a href="todos.html">To-Dos page</a> — the Planner uses the same connection (plus Calendar access).
+      </div>`;
+  }
+
+  // ---- Google Tasks helpers (shared @default list with the To-Dos page, plus the Weekly list) ----
+  async function getWeeklyListId(){
+    const res = await fetch(`${TASKS_BASE}/users/@me/lists`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if(!res.ok) throw new Error('Could not load task lists');
+    const data = await res.json();
+    const existing = (data.items||[]).find(l=>l.title===WEEKLY_LIST_TITLE);
+    if(existing) return existing.id;
+    const createRes = await fetch(`${TASKS_BASE}/users/@me/lists`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: WEEKLY_LIST_TITLE })
+    });
+    if(!createRes.ok) throw new Error('Could not create weekly list');
+    return (await createRes.json()).id;
+  }
+  async function fetchTasksFrom(listId){
+    const res = await fetch(`${TASKS_BASE}/lists/${listId}/tasks?showCompleted=true&showHidden=true&maxResults=100`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if(!res.ok) throw new Error('fetch failed');
+    return (await res.json()).items || [];
+  }
+  async function setTaskStatus(listId, taskId, done){
+    await fetch(`${TASKS_BASE}/lists/${listId}/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: done ? 'completed' : 'needsAction' })
+    });
+  }
+  async function deleteTask(listId, taskId){
+    await fetch(`${TASKS_BASE}/lists/${listId}/tasks/${taskId}`, { method:'DELETE', headers: { Authorization: `Bearer ${accessToken}` } });
+  }
+  async function addDailyTask(title, dueDateStr){
+    await fetch(`${TASKS_BASE}/lists/@default/tasks`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, due: dueDateStr+'T00:00:00.000Z' })
+    });
+  }
+  async function addWeeklyTask(title){
+    await fetch(`${TASKS_BASE}/lists/${weeklyListId}/tasks`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title })
+    });
+  }
+
+  function weekDates(){
+    const monday = mondayOf(new Date());
+    monday.setDate(monday.getDate() + weekOffset*7);
+    const days = [];
+    for(let i=0;i<7;i++){ const d = new Date(monday); d.setDate(monday.getDate()+i); days.push(d); }
+    return days;
+  }
+
+  let calendarsCache = null; // [{id, summary, color}]
+  async function getVisibleCalendars(){
+    if(calendarsCache) return calendarsCache;
+    const res = await fetch(`${CALENDAR_LIST_API}?maxResults=250`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if(!res.ok) throw new Error('Could not load calendar list: '+res.status);
+    const data = await res.json();
+    // "selected" mirrors the checkboxes in Google Calendar's own sidebar —
+    // a calendar someone unchecked there shouldn't reappear here either.
+    // Calendars that have never been toggled don't carry the field at all,
+    // so treat "selected === false" (explicitly hidden) as the only
+    // exclusion; everything else stays visible.
+    calendarsCache = (data.items||[])
+      .filter(c => c.selected !== false)
+      .map(c => ({ id: c.id, summary: c.summary, color: c.backgroundColor || '#D6A94A' }));
+    return calendarsCache;
+  }
+
+  async function fetchAllCalendarEvents(days){
+    const calendars = await getVisibleCalendars();
+    const timeMin = days[0].toISOString();
+    const timeMaxDate = new Date(days[6]); timeMaxDate.setDate(timeMaxDate.getDate()+1);
+    const timeMax = timeMaxDate.toISOString();
+    const params = new URLSearchParams({ timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: '50' });
+
+    const perCalErrors = [];
+    const results = await Promise.all(calendars.map(async (cal)=>{
+      try{
+        const res = await fetch(`${CALENDAR_EVENTS_API(cal.id)}?${params.toString()}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+        if(!res.ok){ perCalErrors.push(`${cal.summary}: HTTP ${res.status}`); return []; }
+        const data = await res.json();
+        return (data.items||[]).map(ev => ({ ...ev, _calColor: cal.color, _calName: cal.summary }));
+      } catch(e){ perCalErrors.push(`${cal.summary}: ${e.message}`); return []; }
+    }));
+    return { events: results.flat(), calendarCount: calendars.length, calendarNames: calendars.map(c=>c.summary), perCalErrors };
+  }
+
+  // Decide how (or whether) a daily task appears on a given day column.
+  // - Completed tasks show crossed-out on the day they were actually
+  //   completed (not necessarily their original due date).
+  // - Tasks due today (or with no due date at all) show normally.
+  // - Tasks that were due on a past day and are still incomplete "carry
+  //   over" into today, shown muted — and are hidden from their original
+  //   day so they don't appear twice.
+  function classifyTaskForDay(task, ds){
+    const due = task.due ? task.due.slice(0,10) : null;
+    const completedDate = task.completed ? task.completed.slice(0,10) : null;
+    const isDone = task.status === 'completed';
+
+    if(isDone){
+      const day = completedDate || due || todayStr;
+      return day === ds ? 'done' : null;
+    }
+    if(due === ds){
+      if(due < todayStr) return null; // superseded by its carry-over into today
+      return 'normal';
+    }
+    if(!due && ds === todayStr) return 'normal';
+    if(due && due < todayStr && ds === todayStr) return 'muted';
+    return null;
+  }
+
+  let dailyTasksCache = [];
+
+  async function renderCalendarAndDays(){
+    const days = weekDates();
+    const mondayStr = isoDate(days[0]);
+    document.getElementById('weekLabel').textContent = `week of ${mondayStr}`;
+    document.getElementById('dayGrid').innerHTML = `<div class="empty-note" style="grid-column:1/-1;"><span class="ai-spinner" style="width:12px;height:12px;vertical-align:-2px;"></span> loading your week…</div>`;
+
+    let events = [];
+    let calendarStatus = '';
+    try{
+      const result = await fetchAllCalendarEvents(days);
+      events = result.events;
+      calendarStatus = `checked ${result.calendarCount} calendar${result.calendarCount!==1?'s':''} (${result.calendarNames.join(', ')||'none'}) — ${events.length} event${events.length!==1?'s':''} this week`;
+      if(result.perCalErrors.length) calendarStatus += ` · errors: ${result.perCalErrors.join('; ')}`;
+    } catch(e){
+      calendarStatus = `couldn't load calendars — ${e.message}`;
+      console.error('calendar fetch failed:', e);
+    }
+
+    try{ dailyTasksCache = await fetchTasksFrom('@default'); } catch(e){ dailyTasksCache = []; }
+
+    paintDayGrid(days, events, calendarStatus);
+  }
+
+  function paintDayGrid(days, events, calendarStatus){
+    const html = days.map(d=>{
+      const ds = isoDate(d);
+      const dayEvents = events.filter(ev=>{
+        const start = ev.start && (ev.start.date || (ev.start.dateTime||'').slice(0,10));
+        return start === ds;
+      });
+      const dayTodos = dailyTasksCache
+        .map(t=>({ t, cls: classifyTaskForDay(t, ds) }))
+        .filter(x=>x.cls);
+
+      const isToday = ds===todayStr;
+      const label = d.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' });
+
+      let inner = `<h4>${label}</h4>`;
+      if(dayEvents.length){
+        inner += `<div class="day-events">` + dayEvents.map(ev=>{
+          const time = ev.start.dateTime ? new Date(ev.start.dateTime).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}) : 'all day';
+          return `<div class="day-event" style="border-left-color:${ev._calColor||'var(--honey)'}" title="${escapeHtml(ev._calName||'')}"><span class="ev-time">${escapeHtml(time)}</span> ${escapeHtml(ev.summary||'(untitled)')}</div>`;
+        }).join('') + `</div>`;
+        if(dayTodos.length) inner += `<div class="day-divider"></div>`;
+      }
+      if(dayTodos.length){
+        inner += `<div class="day-todos">` + dayTodos.map(({t,cls})=>`
+          <div class="day-todo ${cls==='done'?'is-done':''} ${cls==='muted'?'is-muted':''}" data-id="${t.id}">
+            <input type="checkbox" class="mini-check" ${cls==='done'?'checked':''}>
+            <span class="todo-label">${escapeHtml(t.title||'')}${goalTagHtml(t.id)}</span>
+          </div>`).join('') + `</div>`;
+      }
+      inner += `<div class="day-add"><input type="text" placeholder="+ add to-do" data-date="${ds}" class="day-add-input"></div>`;
+
+      return `<div class="day-col ${isToday?'is-today':''}">${inner}</div>`;
+    }).join('');
+
+    document.getElementById('dayGrid').innerHTML =
+      `<div class="empty-note" style="grid-column:1/-1; margin:-4px 0 2px;">${escapeHtml(calendarStatus)}</div>` + html;
+
+    document.querySelectorAll('.day-todo .mini-check').forEach(cb=>{
+      cb.addEventListener('change', async (ev)=>{
+        const row = ev.target.closest('.day-todo');
+        const id = row.dataset.id;
+        try{ await setTaskStatus('@default', id, ev.target.checked); }
+        catch(e){ console.error(e); }
+        window.hubCacheClear('tasks_list');
+        await renderCalendarAndDays();
+      });
+    });
+    document.querySelectorAll('.day-add-input').forEach(input=>{
+      input.addEventListener('keydown', async (ev)=>{
+        if(ev.key!=='Enter') return;
+        const title = input.value.trim();
+        if(!title) return;
+        input.disabled = true;
+        try{ await addDailyTask(title, input.dataset.date); }
+        catch(e){ console.error(e); }
+        window.hubCacheClear('tasks_list');
+        await renderCalendarAndDays();
+      });
+    });
+  }
+
+  function paintWeekly(tasks){
+    const list = document.getElementById('weeklyList');
+    if(tasks.length===0){ list.innerHTML = `<div class="empty-note">nothing on the weekly list yet.</div>`; return; }
+    list.innerHTML = tasks.map(t=>{
+      const done = t.status==='completed';
+      return `<div class="weekly-item ${done?'is-done':''}" data-id="${t.id}">
+        <input type="checkbox" class="leaf-check" style="width:19px;height:19px;min-width:19px;" ${done?'checked':''}>
+        <span class="ti-name">${escapeHtml(t.title||'')}${goalTagHtml(t.id)}</span>
+        <button class="ti-remove" title="remove">×</button>
+      </div>`;
+    }).join('');
+
+    list.querySelectorAll('.weekly-item').forEach(row=>{
+      const id = row.dataset.id;
+      row.querySelector('.leaf-check').addEventListener('change', async (ev)=>{
+        try{ await setTaskStatus(weeklyListId, id, ev.target.checked); }
+        catch(e){ console.error(e); }
+        window.hubCacheClear('weekly_tasks_list');
+        refreshWeekly();
+      });
+      row.querySelector('.ti-remove').addEventListener('click', async ()=>{
+        try{ await deleteTask(weeklyListId, id); }
+        catch(e){ console.error(e); }
+        window.hubCacheClear('weekly_tasks_list');
+        refreshWeekly();
+      });
+    });
+  }
+
+  async function refreshWeekly(){
+    try{ paintWeekly(await fetchTasksFrom(weeklyListId)); }
+    catch(e){ document.getElementById('weeklyList').innerHTML = `<div class="empty-note">couldn't load — try refreshing.</div>`; }
+  }
+
+  // ---- weekly note ----
+  let weekNotes = {};
+  async function loadWeekNote(){
+    try{
+      const v = await window.hubGet('weekly_notes');
+      weekNotes = (v ? JSON.parse(v) : null) || {};
+    } catch(e){ weekNotes = {}; }
+    const mondayStr = isoDate(weekDates()[0]);
+    document.getElementById('weekNoteText').value = weekNotes[mondayStr] || '';
+  }
+  async function saveWeekNote(){
+    const mondayStr = isoDate(weekDates()[0]);
+    weekNotes[mondayStr] = document.getElementById('weekNoteText').value;
+    const note = document.getElementById('noteSavedNote');
+    note.textContent = 'saving…';
+    try{ await window.hubSet('weekly_notes', JSON.stringify(weekNotes)); note.textContent = 'saved ✓'; }
+    catch(e){ note.textContent = 'could not save — try again'; }
+    setTimeout(()=>{ if(note) note.textContent=''; }, 2000);
+  }
+
+  async function loadWeek(){
+    await Promise.all([renderCalendarAndDays(), loadWeekNote()]);
+  }
+
+  document.getElementById('prevWeekBtn').addEventListener('click', ()=>{ weekOffset--; loadWeek(); });
+  document.getElementById('nextWeekBtn').addEventListener('click', ()=>{ weekOffset++; loadWeek(); });
+  document.getElementById('weekNoteText').addEventListener('blur', saveWeekNote);
+  document.getElementById('weeklyAddBtn').addEventListener('click', async ()=>{
+    const input = document.getElementById('weeklyInput');
+    const title = input.value.trim();
+    if(!title) return;
+    input.value = '';
+    try{ await addWeeklyTask(title); window.hubCacheClear('weekly_tasks_list'); await refreshWeekly(); }
+    catch(e){ console.error(e); }
+  });
+  document.getElementById('weeklyInput').addEventListener('keydown', ev=>{
+    if(ev.key==='Enter') document.getElementById('weeklyAddBtn').click();
+  });
+
+  async function init(){
+    let result;
+    try{ result = await callEdgeFn({ action: 'access_token' }); }
+    catch(e){ renderConnectMessage(); return; }
+    if(!result.connected){ renderConnectMessage(); return; }
+    accessToken = result.access_token;
+
+    await loadGoalLinks();
+
+    try{ weeklyListId = await getWeeklyListId(); }
+    catch(e){ document.getElementById('weeklyList').innerHTML = `<div class="empty-note">couldn't set up the weekly list — try refreshing.</div>`; }
+
+    await loadWeek();
+    if(weeklyListId) refreshWeekly();
+  }
+
+  window.hubRequireAuth(init);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wildflower Hub</title>
+<link rel="stylesheet" href="theme.css">
+<link rel="icon" type="image/png" href="icon-192.png">
+<script>window.HUB_ACTIVE = 'home';</script>
+<style>
+  .greeting-card{ background:#fffdf8; border:1px solid var(--ink-line); border-radius:0; padding:18px 20px; margin: 0 0 22px; }
+  .greeting-card p{ font-family:'Source Serif 4', serif; font-size:13.5px; line-height:1.7; color: var(--bark); margin: 4px 0; }
+  .greeting-card .prompt-line{ margin-bottom:8px; }
+</style>
+</head>
+<body>
+
+<div class="book">
+  <div class="cover"><div id="hub-nav"></div></div>
+
+  <div class="pages">
+    <h1>what matters today</h1>
+
+    <div id="greetingArea"></div>
+
+    <div class="card-grid">
+
+      <a href="todos.html" class="card module-card">
+        <span class="module-card__eyebrow">todos</span>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <svg id="todosRing" width="34" height="34" viewBox="0 0 34 34" style="flex-shrink:0;">
+            <circle cx="17" cy="17" r="14" fill="none" stroke="#eee2c4" stroke-width="4"/>
+            <circle id="todosRingFill" cx="17" cy="17" r="14" fill="none" stroke="var(--moss)" stroke-width="4"
+              stroke-dasharray="0 88" stroke-linecap="round" transform="rotate(-90 17 17)"/>
+          </svg>
+          <span class="module-card__stat" id="statTodos" style="font-size:22px;">— / —</span>
+        </div>
+        <span class="module-card__headline">tasks completed today</span>
+      </a>
+
+      <a href="ledger.html" class="card module-card">
+        <span class="module-card__eyebrow">ledger</span>
+        <span class="module-card__stat" id="statLedger">— day streak</span>
+        <span class="module-card__headline">longest active habit streak</span>
+      </a>
+
+      <a href="budget.html" class="card module-card">
+        <span class="module-card__eyebrow">budget</span>
+        <span class="module-card__stat" id="statBudget">$—</span>
+        <span class="module-card__headline" id="statBudgetHeadline">spent this week</span>
+      </a>
+
+      <a href="goals.html" class="card module-card">
+        <span class="module-card__eyebrow">goals</span>
+        <span class="module-card__stat" id="statGoals">— active</span>
+        <span class="module-card__headline" id="statGoalsHeadline">projects in motion</span>
+      </a>
+
+      <a href="inbox.html" class="card module-card">
+        <span class="module-card__eyebrow">inbox</span>
+        <span class="module-card__stat" style="font-family:'JetBrains Mono',monospace; font-style:normal;">@</span>
+        <span class="module-card__headline">worth a glance today</span>
+      </a>
+
+      <a href="journal.html" class="card module-card">
+        <span class="module-card__eyebrow">journal</span>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="module-card__stat" style="font-family:'JetBrains Mono',monospace; font-style:normal;">~</span>
+          <span id="journalMoodDot" style="width:14px; height:14px; border-radius:50%; display:none;"></span>
+        </div>
+        <span class="module-card__headline" id="journalHeadline">jot down today</span>
+      </a>
+
+    </div>
+
+    <p class="footer-comment">a quiet place to check on everything that matters</p>
+  </div>
+</div>
+
+<script src="nav.js"></script>
+<script src="hub-auth.js"></script>
+<script src="quick-capture.js"></script>
+<script>
+(function(){
+  const SUPABASE_URL = 'https://trwprtzbcuoqydgjphpr.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_4CT647Bp6_UUUd4ipLOAmA_D5Z8Ml1Z';
+  const AUTH_FN_URL = `${SUPABASE_URL}/functions/v1/google-tasks-auth`;
+  const PLAID_FN_URL = `${SUPABASE_URL}/functions/v1/plaid-sync`;
+  const AI_FN_URL = `${SUPABASE_URL}/functions/v1/ai-summarize`;
+
+  const isoDate = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const todayStr = isoDate(new Date());
+
+  async function callFn(url, body){
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if(!res.ok || data.error) throw new Error(data.error || ('HTTP '+res.status));
+    return data;
+  }
+
+  function escapeHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // ---- Ledger: longest currently-active daily streak ----
+  async function loadLedgerStreak(){
+    try{
+      const settingsRaw = await window.hubGet('settings');
+      const completionsRaw = await window.hubGet('completions');
+      if(!settingsRaw || !completionsRaw) return null;
+      const settings = JSON.parse(settingsRaw);
+      const completions = JSON.parse(completionsRaw);
+      const dailyGoals = (settings.goals||[]).filter(g=>g.frequency==='daily');
+
+      function streakFor(goalId){
+        let count=0;
+        let d = new Date();
+        const doneToday = completions.daily[goalId] && completions.daily[goalId][todayStr];
+        if(!doneToday) d.setDate(d.getDate()-1);
+        while(true){
+          const ds = isoDate(d);
+          if(completions.daily[goalId] && completions.daily[goalId][ds]){ count++; d.setDate(d.getDate()-1); }
+          else break;
+        }
+        return count;
+      }
+
+      let best = 0;
+      dailyGoals.forEach(g=>{ best = Math.max(best, streakFor(g.id)); });
+      return best;
+    } catch(e){ return null; }
+  }
+
+  const TASKS_BASE = 'https://tasks.googleapis.com/tasks/v1';
+  const WEEKLY_LIST_TITLE = 'Weekly To-Dos (Wildflower Hub)';
+  const CALENDAR_LIST_API = 'https://www.googleapis.com/calendar/v3/users/me/calendarList';
+
+  // ---- To-Dos: live count + titles from Google Tasks (daily + weekly) ----
+  async function loadTodosCount(){
+    try{
+      const result = await callFn(AUTH_FN_URL, { action: 'access_token' });
+      if(!result.connected) return null;
+      const token = result.access_token;
+      const res = await fetch(`${TASKS_BASE}/lists/@default/tasks?showCompleted=true&showHidden=true&maxResults=100`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if(!res.ok) return null;
+      const data = await res.json();
+      const items = (data.items||[]).filter(t=>!t.due || t.due.slice(0,10)<=todayStr); // respect the "invisible until due" rule
+      const done = items.filter(t=>t.status==='completed').length;
+
+      let weeklyTitles = [];
+      try{
+        const listsRes = await fetch(`${TASKS_BASE}/users/@me/lists`, { headers: { Authorization: `Bearer ${token}` } });
+        const listsData = await listsRes.json();
+        const weeklyList = (listsData.items||[]).find(l=>l.title===WEEKLY_LIST_TITLE);
+        if(weeklyList){
+          const wRes = await fetch(`${TASKS_BASE}/lists/${weeklyList.id}/tasks?showCompleted=false&maxResults=50`, { headers: { Authorization: `Bearer ${token}` } });
+          const wData = await wRes.json();
+          weeklyTitles = (wData.items||[]).map(t=>t.title);
+        }
+      } catch(e){ /* weekly list is a bonus, not critical */ }
+
+      return { done, total: items.length, titles: items.filter(t=>t.status!=='completed').map(t=>t.title), weeklyTitles };
+    } catch(e){ return null; }
+  }
+
+  // ---- Planner: today's events across every visible calendar ----
+  async function loadTodayEvents(){
+    try{
+      const result = await callFn(AUTH_FN_URL, { action: 'access_token' });
+      if(!result.connected) return [];
+      const token = result.access_token;
+      const listRes = await fetch(`${CALENDAR_LIST_API}?maxResults=250`, { headers: { Authorization: `Bearer ${token}` } });
+      if(!listRes.ok) return [];
+      const calendars = ((await listRes.json()).items||[]).filter(c=>c.selected!==false);
+
+      const dayStart = new Date(); dayStart.setHours(0,0,0,0);
+      const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate()+1);
+      const params = new URLSearchParams({ timeMin: dayStart.toISOString(), timeMax: dayEnd.toISOString(), singleEvents:'true', orderBy:'startTime', maxResults:'20' });
+
+      const results = await Promise.all(calendars.map(async cal=>{
+        try{
+          const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+          if(!res.ok) return [];
+          return ((await res.json()).items||[]).map(ev=>({
+            summary: ev.summary || '(untitled)',
+            time: ev.start && ev.start.dateTime ? new Date(ev.start.dateTime).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}) : 'all day'
+          }));
+        } catch(e){ return []; }
+      }));
+      return results.flat();
+    } catch(e){ return []; }
+  }
+
+  // ---- Budget: week spend + any category over its monthly limit ----
+  async function loadBudgetDetails(){
+    try{
+      const status = await callFn(PLAID_FN_URL, { action: 'status' });
+      if(!status.connected) return { weekSpend: null, overLimitCategories: [] };
+      const result = await callFn(PLAID_FN_URL, { action: 'transactions' });
+      const transactions = result.transactions || [];
+      const isTransfer = t => { const c = t.personal_finance_category && t.personal_finance_category.primary; return c==='TRANSFER_IN'||c==='TRANSFER_OUT'; };
+      const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate()-7);
+      const weekSpend = transactions.filter(t=>!isTransfer(t) && new Date(t.date)>=weekAgo && t.amount>0).reduce((s,t)=>s+t.amount,0);
+
+      let overLimitCategories = [];
+      try{
+        const prefsRaw = await window.hubGet('budget_prefs');
+        const limits = (prefsRaw ? JSON.parse(prefsRaw).limits : null) || {};
+        const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+        const monthTotals = {};
+        transactions.filter(t=>!isTransfer(t) && new Date(t.date)>=monthStart && t.amount>0).forEach(t=>{
+          const cat = (t.personal_finance_category && t.personal_finance_category.primary) || 'other';
+          monthTotals[cat] = (monthTotals[cat]||0) + t.amount;
+        });
+        overLimitCategories = Object.keys(limits).filter(cat => monthTotals[cat] > limits[cat])
+          .map(cat => ({ category: cat.replace(/_/g,' ').toLowerCase(), spent: Math.round(monthTotals[cat]), limit: limits[cat] }));
+      } catch(e){ /* limits are a bonus */ }
+
+      return { weekSpend, overLimitCategories };
+    } catch(e){ return { weekSpend: null, overLimitCategories: [] }; }
+  }
+
+  // ---- Goals: active goals with notes + linked to-do progress ----
+  async function loadGoalsDetail(){
+    try{
+      const v = await window.hubGet('goals_board');
+      const cards = (v ? JSON.parse(v).cards : null) || [];
+      const active = cards.filter(c=>c.column!=='done');
+      const inProgress = active.filter(c=>c.column==='in-progress').length;
+      return {
+        count: active.length,
+        inProgress,
+        notStarted: active.length - inProgress,
+        goals: active.slice(0,6).map(c=>({
+          title: c.title,
+          column: c.column,
+          hasNotes: !!(c.notes && c.notes.trim()),
+          linkedTodoCount: (c.linkedTasks||[]).length
+        }))
+      };
+    } catch(e){ return { count: null, inProgress: null, notStarted: null, goals: [] }; }
+  }
+
+  // ---- Journal: last 7 days of mood/tags for the AI to spot real patterns in ----
+  async function loadRecentJournal(){
+    try{
+      const v = await window.hubGet('journal');
+      const entries = (v ? JSON.parse(v).entries : null) || {};
+      const days = [];
+      const cursor = new Date();
+      for(let i=6;i>=0;i--){
+        const d = new Date(cursor); d.setDate(cursor.getDate()-i);
+        const ds = isoDate(d);
+        const e = entries[ds];
+        if(e && (e.mood || (e.tags||[]).length)) days.push({ date: ds, mood: e.mood||null, tags: e.tags||[] });
+      }
+      return days;
+    } catch(e){ return []; }
+  }
+
+  async function loadGreeting(streak, todos, budget, activeGoals, recentJournal, todayEvents){
+    const inboxCached = window.hubCacheRead('inbox_digest');
+    const dailyData = {
+      openTasksToday: todos ? todos.titles.slice(0, 10) : [],
+      weeklyTasks: todos ? (todos.weeklyTitles||[]).slice(0,10) : [],
+      tasksDoneToday: todos ? todos.done : null,
+      tasksTotalToday: todos ? todos.total : null,
+      todayCalendarEvents: todayEvents && todayEvents.length ? todayEvents : undefined,
+      ledgerStreak: streak,
+      weekSpend: budget && budget.weekSpend!==null ? Math.round(budget.weekSpend*100)/100 : null,
+      budgetOverLimitCategories: budget && budget.overLimitCategories.length ? budget.overLimitCategories : undefined,
+      activeGoals: activeGoals && activeGoals.goals.length ? activeGoals.goals : undefined,
+      recentJournal: recentJournal && recentJournal.length ? recentJournal : undefined,
+      inboxDigestSummary: inboxCached ? inboxCached.data.digestText : undefined,
+    };
+
+    const cached = window.hubCacheRead('daily_greeting');
+    if(cached){
+      renderGreetingHtml(cached.data);
+    } else {
+      document.getElementById('greetingArea').innerHTML = `<div class="ai-loading"><span class="ai-spinner"></span> pulling your day together…</div>`;
+    }
+
+    try{
+      const result = await callFn(AI_FN_URL, { task: 'daily_greeting', dailyData });
+      const text = result.greeting || '';
+      if(!cached || text !== cached.data){
+        window.hubCacheWrite('daily_greeting', text);
+        renderGreetingHtml(text);
+      }
+    } catch(e){
+      // AI layer is a nice-to-have on this page — fail quietly (keep any
+      // cached greeting showing) since the stat cards below still carry
+      // the real information either way.
+      if(!cached) document.getElementById('greetingArea').innerHTML = '';
+    }
+  }
+
+  function renderGreetingHtml(text){
+    const lines = (text||'').split('\n').map(l=>l.trim()).filter(Boolean);
+    if(lines.length===0){ document.getElementById('greetingArea').innerHTML = ''; return; }
+    document.getElementById('greetingArea').innerHTML = `
+      <div class="greeting-card">
+        <div class="prompt-line">$ ./assistant.sh<span class="cursor"></span></div>
+        ${lines.map(l=>`<p>${escapeHtml(l.replace(/^[-•\s]+/,''))}</p>`).join('')}
+      </div>`;
+  }
+
+  const MOOD_COLORS = { struggling:'#8a7d64', low:'#C97B5A', okay:'#D6A94A', good:'#5C7A52', great:'#A78BC9' };
+
+  function paintStats(streak, todos, budget, activeGoals, todaysMood){
+    document.getElementById('statLedger').textContent = streak===null||streak===undefined ? '—' : `${streak} day${streak===1?'':'s'}`;
+
+    document.getElementById('statTodos').textContent = (!todos) ? '— / —' : `${todos.done} / ${todos.total}`;
+    const ringFill = document.getElementById('todosRingFill');
+    if(todos && todos.total>0){
+      const pct = todos.done/todos.total;
+      const circumference = 2*Math.PI*14;
+      ringFill.setAttribute('stroke-dasharray', `${pct*circumference} ${circumference}`);
+    } else {
+      ringFill.setAttribute('stroke-dasharray', '0 88');
+    }
+
+    const weekSpend = budget ? budget.weekSpend : null;
+    const budgetEl = document.getElementById('statBudget');
+    budgetEl.textContent = weekSpend===null||weekSpend===undefined ? '$—' : ('$'+weekSpend.toFixed(0));
+    const overCount = budget && budget.overLimitCategories ? budget.overLimitCategories.length : 0;
+    budgetEl.style.color = overCount>0 ? 'var(--clay)' : '';
+    document.getElementById('statBudgetHeadline').textContent = overCount>0
+      ? `spent this week · ${overCount} categor${overCount===1?'y':'ies'} over limit`
+      : 'spent this week';
+
+    const goalsCount = activeGoals ? activeGoals.count : null;
+    document.getElementById('statGoals').textContent = goalsCount===null||goalsCount===undefined ? '— active' : `${goalsCount} active`;
+    document.getElementById('statGoalsHeadline').textContent = (activeGoals && activeGoals.count>0)
+      ? `${activeGoals.inProgress} in progress, ${activeGoals.notStarted} not started`
+      : 'projects in motion';
+
+    const moodDot = document.getElementById('journalMoodDot');
+    if(todaysMood && MOOD_COLORS[todaysMood]){
+      moodDot.style.display = 'inline-block';
+      moodDot.style.background = MOOD_COLORS[todaysMood];
+      document.getElementById('journalHeadline').textContent = `today: ${todaysMood}`;
+    } else {
+      moodDot.style.display = 'none';
+      document.getElementById('journalHeadline').textContent = 'jot down today';
+    }
+  }
+
+  async function init(){
+    // Paint instantly from cache if we have it, then quietly refresh.
+    const cachedStats = window.hubCacheRead('landing_stats');
+    if(cachedStats){
+      const s = cachedStats.data;
+      paintStats(s.streak, s.todos, s.budget, s.activeGoals, s.todaysMood);
+    }
+
+    const [streak, todos, budget, activeGoals, recentJournal, todayEvents] = await Promise.all([
+      loadLedgerStreak(), loadTodosCount(), loadBudgetDetails(), loadGoalsDetail(), loadRecentJournal(), loadTodayEvents()
+    ]);
+    const todaysMood = (recentJournal.find(d=>d.date===todayStr) || {}).mood || null;
+
+    const fresh = { streak, todos, budget, activeGoals, todaysMood };
+    const changed = !cachedStats || JSON.stringify(fresh) !== JSON.stringify(cachedStats.data);
+    window.hubCacheWrite('landing_stats', fresh);
+    if(changed || !cachedStats) paintStats(streak, todos, budget, activeGoals, todaysMood);
+
+    loadGreeting(streak, todos, budget, activeGoals, recentJournal, todayEvents);
+  }
+
+  window.hubRequireAuth(init);
+})();
+</script>
+</body>
+</html>

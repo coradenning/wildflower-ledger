@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Goals — Wildflower Hub</title>
+<link rel="stylesheet" href="theme.css">
+<link rel="icon" type="image/png" href="icon-192.png">
+<script>window.HUB_ACTIVE = 'goals';</script>
+<style>
+  .board{ display:grid; grid-template-columns: repeat(3, 1fr); gap:14px; margin-top:16px; }
+  .board-col{ background:#fffdf8; border:1px solid var(--ink-line); border-radius:0; padding:14px; display:flex; flex-direction:column; gap:10px; min-height:120px; }
+  .board-col h3{ font-family:'Fraunces',serif; font-style:italic; font-weight:700; font-size:16px; color: var(--forest); margin:0; display:flex; align-items:center; gap:6px; text-transform:lowercase; }
+  .board-col h3::before{ content:'❀'; color: var(--clay); font-size:12px; }
+  .goal-card{ background:#fff; border:1px solid var(--ink-line); border-radius:0; padding:10px 12px; }
+  .goal-card .gc-title{ font-weight:700; font-size:13.5px; color: var(--bark); margin-bottom:3px; cursor:pointer; }
+  .goal-card .gc-title:hover{ color: var(--moss-deep); }
+  .goal-card .gc-meta{ font-family:'JetBrains Mono',monospace; font-size:10px; color: var(--muted); margin-bottom:6px; }
+  .stalled-badge{ display:inline-block; margin-left:6px; font-family:'JetBrains Mono',monospace; font-weight:500; font-size:8.5px; text-transform:lowercase; letter-spacing:0.2px;
+    background:transparent; color: var(--clay); border:1px solid var(--clay); padding:1px 6px; border-radius:0; vertical-align:middle; }
+  .gc-actions{ display:flex; align-items:center; gap:4px; }
+  .gc-btn{ background:transparent; border:1px solid var(--ink-line); border-radius:0; color: var(--forest); cursor:pointer; font-size:12px; padding:3px 8px; }
+  .gc-btn:hover{ border-color: var(--rose); background:#f6f1e0; }
+  .gc-btn:disabled{ opacity:0.25; cursor:default; }
+  .gc-btn.gc-del{ margin-left:auto; color: var(--clay); border-color: transparent; }
+  .add-card-row{ display:flex; flex-direction:column; gap:6px; }
+  .add-card-row input, .add-card-row textarea{
+    font-size:12.5px; padding:7px 9px; border:1px solid var(--ink-line);
+    border-radius:0; background:#fff; color: var(--bark); resize:vertical;
+  }
+  .add-card-row button{ background: var(--moss); color:#fff; border:none; font-weight:700; font-size:11.5px; padding:7px 10px; border-radius:0; cursor:pointer; }
+  .add-card-row button:hover{ background: var(--moss-deep); }
+  @media (max-width: 700px){ .board{ grid-template-columns: 1fr; } }
+
+  /* ---- detail panel (notes + linked to-dos) ---- */
+  .gc-detail{ margin-top:9px; padding-top:9px; border-top:1px dashed var(--ink-line); display:flex; flex-direction:column; gap:8px; }
+  .gc-detail textarea{ width:100%; box-sizing:border-box; min-height:60px; font-family:'Source Serif 4',serif; font-size:12.5px; padding:7px 9px; border:1px solid var(--ink-line); border-radius:0; background:#fffdf8; color: var(--bark); resize:vertical; }
+  .gc-linked-list{ display:flex; flex-direction:column; gap:4px; }
+  .gc-linked-item{ display:flex; align-items:center; gap:6px; font-size:11.5px; }
+  .gc-linked-item .mini-check{ width:13px; height:13px; min-width:13px; border-radius:0 !important; }
+  .gc-linked-item.is-done .lt-label{ text-decoration:line-through; color: var(--muted); }
+  .gc-linked-item .lt-label{ flex:1; }
+  .gc-linked-item .lt-unlink{ background:none; border:none; color: var(--clay); cursor:pointer; font-size:12px; }
+  .gc-link-row{ display:flex; gap:5px; }
+  .gc-link-row input, .gc-link-row select{ flex:1; font-size:11.5px; padding:5px 7px; border:1px solid var(--ink-line); border-radius:0; }
+  .gc-link-row button{ background: var(--honey); color:#4a3b12; border:none; font-weight:700; font-size:11px; padding:0 9px; border-radius:0; cursor:pointer; }
+  .gc-save-note{ font-family:'JetBrains Mono',monospace; font-size:9.5px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="book">
+  <div class="cover"><div id="hub-nav"></div></div>
+  <div class="pages">
+    <h1>Goals &amp; Projects</h1>
+    <p class="empty-note">Longer-horizon work that isn't a daily habit — click a title to write notes and link to-dos.</p>
+    <div id="app"><div class="loading">unrolling the parchment…</div></div>
+  </div>
+</div>
+
+<script src="nav.js"></script>
+<script src="hub-auth.js"></script>
+<script src="quick-capture.js"></script>
+<script>
+(function(){
+  const SUPABASE_URL = 'https://trwprtzbcuoqydgjphpr.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_4CT647Bp6_UUUd4ipLOAmA_D5Z8Ml1Z';
+  const AUTH_FN_URL = `${SUPABASE_URL}/functions/v1/google-tasks-auth`;
+  const TASKS_BASE = 'https://tasks.googleapis.com/tasks/v1';
+  const WEEKLY_LIST_TITLE = 'Weekly To-Dos (Wildflower Hub)';
+
+  const app = document.getElementById('app');
+
+  const COLUMNS = [
+    { id:'not-started', label:'not started' },
+    { id:'in-progress', label:'in progress' },
+    { id:'done', label:'done' },
+  ];
+
+  function escapeHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function uid(){ return 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+  let cards = [];
+  let expandedId = null;
+  let accessToken = null;
+  let weeklyListId = null;
+  let openTasks = []; // {id, listId, title, status} across both lists, refreshed after any change
+
+  async function save(){ await window.hubSet('goals_board', JSON.stringify({ cards })); }
+
+  // ---- Google Tasks (optional — notes still work without a connection) ----
+  async function callAuthFn(body){
+    const res = await fetch(AUTH_FN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON_KEY}`, apikey: SUPABASE_ANON_KEY },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if(!res.ok || data.error) throw new Error(data.error || ('HTTP '+res.status));
+    return data;
+  }
+  async function getWeeklyListId(){
+    const res = await fetch(`${TASKS_BASE}/users/@me/lists`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if(!res.ok) throw new Error('list fetch failed');
+    const data = await res.json();
+    const existing = (data.items||[]).find(l=>l.title===WEEKLY_LIST_TITLE);
+    if(existing) return existing.id;
+    const createRes = await fetch(`${TASKS_BASE}/users/@me/lists`, {
+      method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: WEEKLY_LIST_TITLE })
+    });
+    return (await createRes.json()).id;
+  }
+  async function fetchListTasks(listId){
+    const res = await fetch(`${TASKS_BASE}/lists/${listId}/tasks?showCompleted=true&showHidden=true&maxResults=100`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if(!res.ok) return [];
+    return ((await res.json()).items || []).map(t=>({ id:t.id, listId, title:t.title, status:t.status }));
+  }
+  async function refreshOpenTasks(){
+    if(!accessToken) return;
+    const [daily, weekly] = await Promise.all([
+      fetchListTasks('@default'),
+      weeklyListId ? fetchListTasks(weeklyListId) : Promise.resolve([])
+    ]);
+    openTasks = [...daily, ...weekly];
+  }
+  function taskById(id){ return openTasks.find(t=>t.id===id); }
+
+  async function addGoalTask(card, title){
+    const res = await fetch(`${TASKS_BASE}/lists/${weeklyListId}/tasks`, {
+      method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title })
+    });
+    const created = await res.json();
+    card.linkedTasks = card.linkedTasks || [];
+    card.linkedTasks.push({ id: created.id, listId: weeklyListId });
+    await save();
+    await refreshOpenTasks();
+  }
+  async function toggleTaskStatus(listId, taskId, done){
+    await fetch(`${TASKS_BASE}/lists/${listId}/tasks/${taskId}`, {
+      method: 'PATCH', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: done ? 'completed' : 'needsAction' })
+    });
+    await refreshOpenTasks();
+  }
+
+  function renderCardDetail(card){
+    const linked = (card.linkedTasks||[]).map(l => ({ link: l, task: taskById(l.id) })).filter(x=>x.task);
+
+    let html = `<div class="gc-detail">
+      <textarea class="gc-notes-input" placeholder="notes — what does 'done' look like, why it matters, next steps…">${escapeHtml(card.notes||'')}</textarea>
+      <div class="gc-save-note" data-role="save-status"></div>`;
+
+    if(!accessToken){
+      html += `<div class="empty-note" style="padding:0;">connect Google from the <a href="todos.html">To-Dos page</a> to link to-dos here.</div>`;
+    } else {
+      html += `<div class="gc-linked-list">`;
+      if(linked.length===0) html += `<div class="empty-note" style="padding:0;">no to-dos linked yet.</div>`;
+      linked.forEach(({link, task})=>{
+        const done = task.status==='completed';
+        html += `<div class="gc-linked-item ${done?'is-done':''}" data-task-id="${task.id}" data-list-id="${task.listId}">
+          <input type="checkbox" class="mini-check" ${done?'checked':''}>
+          <span class="lt-label">${escapeHtml(task.title)}</span>
+          <button class="lt-unlink" title="unlink">unlink</button>
+        </div>`;
+      });
+      html += `</div>`;
+
+      const linkedIds = new Set((card.linkedTasks||[]).map(l=>l.id));
+      const linkable = openTasks.filter(t=> t.status!=='completed' && !linkedIds.has(t.id));
+
+      html += `<div class="gc-link-row">
+        <input type="text" class="gc-new-task" placeholder="add a to-do for this goal…" maxlength="200">
+        <button class="gc-add-task-btn">+ add</button>
+      </div>`;
+      if(linkable.length){
+        html += `<div class="gc-link-row">
+          <select class="gc-existing-select">
+            <option value="">link an existing to-do…</option>
+            ${linkable.map(t=>`<option value="${t.id}|${t.listId}">${escapeHtml(t.title)}</option>`).join('')}
+          </select>
+          <button class="gc-link-existing-btn">link</button>
+        </div>`;
+      }
+    }
+    html += `</div>`;
+    return html;
+  }
+
+  function render(){
+    let html = `<div class="board">`;
+    COLUMNS.forEach((col, colIdx)=>{
+      const colCards = cards.filter(c=>c.column===col.id);
+      html += `<div class="board-col" data-col="${col.id}">
+        <h3>${col.label} <span style="font-family:'JetBrains Mono',monospace; font-style:normal; font-size:11px; color:var(--muted);">(${colCards.length})</span></h3>`;
+      colCards.forEach(c=>{
+        const linkedCount = (c.linkedTasks||[]).length;
+        const doneCount = (c.linkedTasks||[]).filter(l => { const t = taskById(l.id); return t && t.status==='completed'; }).length;
+        const ageDays = c.createdAt ? (Date.now() - new Date(c.createdAt).getTime()) / 86400000 : 0;
+        const stalled = c.column!=='done' && linkedCount>0 && doneCount===0 && ageDays>7;
+        html += `<div class="goal-card" data-id="${c.id}">
+          <div class="gc-title">${escapeHtml(c.title)}${stalled ? '<span class="stalled-badge" title="no progress on linked to-dos in over a week">stalled</span>' : ''}</div>
+          ${linkedCount ? `<div class="gc-meta">${doneCount}/${linkedCount} linked to-dos done</div>` : (c.notes ? `<div class="gc-meta">has notes</div>` : '')}
+          <div class="gc-actions">
+            <button class="gc-btn gc-left" ${colIdx===0?'disabled':''} title="move left">◀</button>
+            <button class="gc-btn gc-right" ${colIdx===COLUMNS.length-1?'disabled':''} title="move right">▶</button>
+            <button class="gc-btn gc-del" title="delete">×</button>
+          </div>
+          ${expandedId===c.id ? renderCardDetail(c) : ''}
+        </div>`;
+      });
+      html += `<div class="add-card-row">
+        <input type="text" class="new-title" placeholder="new card title…" data-col="${col.id}">
+        <button class="add-card-btn" data-col="${col.id}">+ add to ${col.label}</button>
+      </div>`;
+      html += `</div>`;
+    });
+    html += `</div>`;
+    app.innerHTML = html;
+    attachHandlers();
+  }
+
+  function attachHandlers(){
+    app.querySelectorAll('.gc-title').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        const id = el.closest('.goal-card').dataset.id;
+        expandedId = expandedId===id ? null : id;
+        render();
+      });
+    });
+    app.querySelectorAll('.gc-left').forEach(btn=>{
+      btn.addEventListener('click', async (ev)=>{
+        ev.stopPropagation();
+        const id = btn.closest('.goal-card').dataset.id;
+        const card = cards.find(c=>c.id===id);
+        const idx = COLUMNS.findIndex(c=>c.id===card.column);
+        if(idx>0){ card.column = COLUMNS[idx-1].id; await save(); render(); }
+      });
+    });
+    app.querySelectorAll('.gc-right').forEach(btn=>{
+      btn.addEventListener('click', async (ev)=>{
+        ev.stopPropagation();
+        const id = btn.closest('.goal-card').dataset.id;
+        const card = cards.find(c=>c.id===id);
+        const idx = COLUMNS.findIndex(c=>c.id===card.column);
+        if(idx<COLUMNS.length-1){ card.column = COLUMNS[idx+1].id; await save(); render(); }
+      });
+    });
+    app.querySelectorAll('.gc-del').forEach(btn=>{
+      btn.addEventListener('click', async (ev)=>{
+        ev.stopPropagation();
+        const id = btn.closest('.goal-card').dataset.id;
+        cards = cards.filter(c=>c.id!==id);
+        if(expandedId===id) expandedId=null;
+        await save(); render();
+      });
+    });
+    app.querySelectorAll('.add-card-btn').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const col = btn.dataset.col;
+        const input = app.querySelector(`.new-title[data-col="${col}"]`);
+        const title = input.value.trim();
+        if(!title) return;
+        cards.push({ id: uid(), title, notes:'', column: col, linkedTasks:[], createdAt: new Date().toISOString() });
+        await save(); render();
+      });
+    });
+    app.querySelectorAll('.new-title').forEach(input=>{
+      input.addEventListener('keydown', ev=>{
+        if(ev.key==='Enter') app.querySelector(`.add-card-btn[data-col="${input.dataset.col}"]`).click();
+      });
+    });
+
+    app.querySelectorAll('.gc-notes-input').forEach(textarea=>{
+      textarea.addEventListener('blur', async ()=>{
+        const id = textarea.closest('.goal-card').dataset.id;
+        const card = cards.find(c=>c.id===id);
+        if(card.notes === textarea.value) return;
+        card.notes = textarea.value;
+        const status = textarea.closest('.gc-detail').querySelector('[data-role="save-status"]');
+        status.textContent = 'saving…';
+        try{ await save(); status.textContent = 'saved ✓'; } catch(e){ status.textContent = 'could not save'; }
+        setTimeout(()=>{ if(status) status.textContent=''; }, 1800);
+      });
+    });
+    app.querySelectorAll('.gc-linked-item .mini-check').forEach(cb=>{
+      cb.addEventListener('change', async (ev)=>{
+        const row = ev.target.closest('.gc-linked-item');
+        try{ await toggleTaskStatus(row.dataset.listId, row.dataset.taskId, ev.target.checked); } catch(e){ console.error(e); }
+        render();
+      });
+    });
+    app.querySelectorAll('.lt-unlink').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const row = btn.closest('.gc-linked-item');
+        const id = btn.closest('.goal-card').dataset.id;
+        const card = cards.find(c=>c.id===id);
+        card.linkedTasks = (card.linkedTasks||[]).filter(l=>l.id!==row.dataset.taskId);
+        await save(); render();
+      });
+    });
+    app.querySelectorAll('.gc-add-task-btn').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const cardEl = btn.closest('.goal-card');
+        const id = cardEl.dataset.id;
+        const card = cards.find(c=>c.id===id);
+        const input = cardEl.querySelector('.gc-new-task');
+        const title = input.value.trim();
+        if(!title || !weeklyListId) return;
+        input.disabled = true;
+        try{ await addGoalTask(card, title); } catch(e){ console.error(e); }
+        render();
+      });
+    });
+    app.querySelectorAll('.gc-link-existing-btn').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const cardEl = btn.closest('.goal-card');
+        const id = cardEl.dataset.id;
+        const card = cards.find(c=>c.id===id);
+        const select = cardEl.querySelector('.gc-existing-select');
+        if(!select.value) return;
+        const [taskId, listId] = select.value.split('|');
+        card.linkedTasks = card.linkedTasks || [];
+        card.linkedTasks.push({ id: taskId, listId });
+        await save(); render();
+      });
+    });
+  }
+
+  async function init(){
+    try{
+      const v = await window.hubGet('goals_board');
+      cards = (v ? JSON.parse(v).cards : null) || [];
+      cards.forEach(c=>{ if(!c.linkedTasks) c.linkedTasks = []; });
+    } catch(e){
+      app.innerHTML = `<div class="empty-note">Couldn't load your board — try refreshing.</div>`;
+      return;
+    }
+
+    try{
+      const result = await callAuthFn({ action: 'access_token' });
+      if(result.connected){
+        accessToken = result.access_token;
+        weeklyListId = await getWeeklyListId();
+        await refreshOpenTasks();
+      }
+    } catch(e){ /* Google is optional here — notes still work without it */ }
+
+    render();
+  }
+
+  window.hubRequireAuth(init);
+})();
+</script>
+</body>
+</html>

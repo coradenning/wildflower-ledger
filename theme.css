@@ -1,0 +1,187 @@
+/* ============================================================
+   Wildflower Hub — shared theme
+   A wildflower field with a terminal's bones: the forest/vine/
+   firefly backdrop and warm parchment stay exactly as they were;
+   the chrome on top (nav, cards, labels, buttons) now runs on
+   sharp hairline edges and monospace, echoing coradenning.site's
+   terminal identity without copying its dark palette.
+   Fonts: Fraunces (display, italic), JetBrains Mono (UI/labels/
+   data), Source Serif 4 (body prose — journal entries, notes).
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@1,600;1,700&family=JetBrains+Mono:wght@400;500;700&family=Source+Serif+4:wght@400;600&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&display=swap');
+
+:root{
+  --parchment: #F6F0DE;
+  --parchment-line: #ddd0ab;
+  --moss: #5C7A52;
+  --moss-deep: #3B5636;
+  --forest: #2F4232;
+  --clay: #C97B5A;
+  --lavender: #A78BC9;
+  --honey: #D6A94A;
+  --bark: #46392C;
+  --muted: #8a7d64;
+  --card-shadow: rgba(70,57,44,0.14);
+  --rose: #B4767E;
+  --rose-deep: #8f5760;
+  --ink-line: rgba(70,57,44,0.35);
+}
+
+*{ box-sizing:border-box; }
+@media (prefers-reduced-motion: reduce){
+  *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; }
+}
+
+html, body{ margin:0; padding:0; }
+
+body{
+  background: var(--forest);
+  background-image:
+    radial-gradient(circle at 15% 10%, rgba(214,169,74,0.10), transparent 45%),
+    radial-gradient(circle at 85% 90%, rgba(167,139,201,0.12), transparent 45%);
+  font-family:'Source Serif 4', serif;
+  color: var(--bark);
+  min-height:100vh;
+  padding: 32px 16px 64px;
+}
+
+/* ---------- ambient floral overlay + fireflies/stars (whole site — untouched) ---------- */
+.floral-overlay{
+  position:fixed; inset:0; z-index:0;
+  background-image: url('floral-lines.png');
+  background-repeat: repeat;
+  background-size: 640px auto;
+  opacity: 0.22;
+  pointer-events:none;
+}
+.page-bg{ position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; }
+.page-stars span{
+  position:absolute; border-radius:50%; background:#F6F0DE;
+  animation: twinkle 5s ease-in-out infinite;
+}
+@keyframes twinkle{ 0%,100%{ opacity:0.25; } 50%{ opacity:0.85; } }
+.page-fireflies span{
+  position:absolute; width:4px; height:4px; border-radius:50%;
+  background: radial-gradient(circle, rgba(255,244,214,0.9), rgba(255,244,214,0));
+  box-shadow: 0 0 7px 2px rgba(214,169,74,0.5);
+  animation: flicker 6s ease-in-out infinite;
+}
+@keyframes flicker{ 0%,100%{ opacity:0.15; transform:scale(0.8);} 50%{ opacity:0.9; transform:scale(1.15);} }
+
+/* ---------- book / cover / pages shell (every page uses this — untouched) ---------- */
+.book{ width:100%; max-width:900px; margin:0 auto; animation: bookIn 0.7s ease-out; position:relative; z-index:1; }
+@keyframes bookIn{ from{ opacity:0; transform: translateY(10px); } to{ opacity:1; transform:none; } }
+
+.cover{
+  background: linear-gradient(160deg, var(--moss), var(--moss-deep));
+  border-radius: 22px 22px 4px 4px;
+  padding: 16px 28px;
+  color: #F6F0DE;
+  box-shadow: 0 16px 38px rgba(0,0,0,0.38);
+  position:relative; overflow:hidden;
+}
+
+.pages{
+  background: var(--parchment);
+  padding: 26px 30px 34px;
+  box-shadow: 0 18px 40px var(--card-shadow), inset 0 0 70px rgba(70,57,44,0.05);
+  border-radius: 4px 4px 22px 22px;
+  position:relative;
+}
+
+h1, h2, h3, h4{ font-family:'Fraunces', serif; font-style:italic; font-weight:700; color: var(--forest); margin:0 0 0.3em; text-transform:lowercase; letter-spacing:-0.01em; }
+h1{ font-size: 2rem; }
+h2{ font-size: 1.4rem; }
+h3{ font-size: 1.1rem; }
+.accent-script{ font-family:'Fraunces', serif; font-style:italic; color: var(--rose); font-size:1.1em; line-height:1; text-transform:lowercase; }
+
+/* terminal prompt motif — used sparingly as the site's signature */
+.prompt-line{
+  font-family:'JetBrains Mono', monospace; font-size:12.5px; color: var(--rose);
+  display:flex; align-items:center; gap:2px; margin-bottom:6px;
+}
+.prompt-line .cursor{
+  display:inline-block; width:7px; height:14px; background: var(--rose); margin-left:2px;
+  animation: blink 1.1s steps(1) infinite;
+}
+@keyframes blink{ 50%{ opacity:0; } }
+@media (prefers-reduced-motion: reduce){ .prompt-line .cursor{ animation:none; } }
+
+a{ color: var(--clay); text-decoration:none; }
+a:hover{ color: var(--moss-deep); text-decoration:underline; }
+a:focus-visible, button:focus-visible, .card:focus-visible{ outline: 3px solid var(--moss-deep); outline-offset: 2px; }
+
+/* ---------- nav (lives inside .cover) ---------- */
+.hub-nav{
+  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
+}
+.hub-nav__brand{ display:flex; align-items:center; gap:8px; }
+.hub-nav__brand-text{ font-family:'Fraunces', serif; font-style:italic; font-weight:700; font-size:1.3rem; color:#F6F0DE; }
+.hub-nav__brand-accent{ font-family:'JetBrains Mono', monospace; font-style:normal; font-weight:500; color: var(--rose); font-size:0.85em; }
+.hub-nav__links{ display:flex; flex-wrap:wrap; gap:2px; }
+.hub-nav__links a{
+  font-family:'JetBrains Mono', monospace; font-weight:500; font-size:0.8rem; color: rgba(246,240,222,0.8);
+  text-transform:lowercase; letter-spacing:0.01em;
+  padding:6px 10px; border-radius:0; transition: color 0.15s ease;
+}
+.hub-nav__links a:hover{ background:transparent; color:#fff; text-decoration: underline; text-underline-offset:3px; }
+.hub-nav__links a.is-active{ background:transparent; color:#fff; position:relative; }
+.hub-nav__links a.is-active::before{ content:'['; margin-right:2px; color: var(--rose); }
+.hub-nav__links a.is-active::after{ content:']'; margin-left:2px; color: var(--rose); }
+
+/* ---------- cards / grid (landing dashboard + reused everywhere) ---------- */
+.card{
+  background:#fffdf8; border:1px solid var(--ink-line); border-radius:0;
+  padding:16px 18px; box-shadow:none;
+}
+.card-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(230px,1fr)); gap:14px; }
+.module-card{ display:flex; flex-direction:column; gap:6px; text-decoration:none; color:var(--bark); }
+.module-card:hover{ text-decoration:none; border-color: var(--rose); background:#fffef9; transform:none; transition: border-color 0.15s ease; }
+.module-card__eyebrow{ font-family:'JetBrains Mono', monospace; font-style:normal; font-size:11px; color: var(--muted); text-transform:lowercase; letter-spacing:0.03em; }
+.module-card__eyebrow::before{ content:'$ '; color: var(--rose); }
+.module-card__stat{ font-family:'Fraunces', serif; font-style:italic; font-weight:700; font-size:29px; color: var(--forest); font-variant-numeric: tabular-nums; }
+.module-card__headline{ font-family:'JetBrains Mono', monospace; font-size:10px; color:#a89b7d; text-transform:lowercase; }
+
+.empty-note{ font-family:'JetBrains Mono', monospace; font-size:11.5px; color: var(--muted); padding:6px 0 14px; }
+
+/* ---------- shared stat cards (Ledger + Budget both use these) ---------- */
+.balance-row{ display:flex; gap:14px; margin-bottom: 6px; flex-wrap:wrap; }
+.balance-card{ flex:1; min-width:160px; background:#fffdf8; border:1px solid var(--ink-line); border-radius:0; padding:15px 18px; }
+.balance-card .label{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color: var(--muted); text-transform:lowercase; }
+.balance-card .value{ font-family:'Fraunces',serif; font-style:italic; font-weight:700; font-size:29px; color: var(--forest); font-variant-numeric: tabular-nums; }
+.balance-card.spend .value{ color: var(--clay); }
+.balance-card .sub{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#a89b7d; margin-top:2px; }
+@media (max-width:520px){ .balance-row{ flex-direction:column; } }
+
+/* ---------- AI loading indicator ---------- */
+.ai-loading{ display:flex; align-items:center; gap:9px; font-family:'JetBrains Mono', monospace; font-size:12px; color: var(--muted); padding:10px 2px; }
+.ai-spinner{
+  width:15px; height:15px; border-radius:50%;
+  border: 2px solid var(--parchment-line); border-top-color: var(--honey);
+  animation: ai-spin 0.8s linear infinite;
+}
+@keyframes ai-spin{ to{ transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce){ .ai-spinner{ animation: none; border-top-color: var(--parchment-line); } }
+
+/* ---------- generic UI chrome (buttons, inputs, tags) — sharp + mono ---------- */
+button, input, select, textarea{ font-family:'JetBrains Mono', monospace; }
+button{ border-radius:0 !important; }
+input, select{ border-radius:0 !important; }
+
+/* ---------- divider / footer comment ---------- */
+.vine-row{ display:block; width:100%; height:22px; margin:0 auto; opacity:0.55; }
+.vine-row svg{ width:100%; height:100%; display:block; }
+.vine-divider{ display:none; }
+.footer-comment{ font-family:'JetBrains Mono', monospace; font-size:11px; color: var(--muted); padding:14px 0 4px; border-top:1px solid var(--ink-line); margin-top:24px; }
+.footer-comment::before{ content:'// '; color: var(--rose); }
+
+@media (max-width:560px){
+  h1{ font-size:1.7rem; }
+  .cover{ padding:14px 18px; }
+  .pages{ padding:20px 16px 26px; }
+}
+
+/* ---------- shared section title (Ledger, Journal, etc.) ---------- */
+.section-title{ font-family:'Fraunces',serif; font-style:italic; font-weight:700; font-size:19px; color: var(--forest); margin: 24px 0 4px; display:flex; align-items:center; gap:8px; text-transform:lowercase; }
+.section-title::before{ content:'❀'; color: var(--clay); font-size:14px; }

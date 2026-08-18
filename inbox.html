@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inbox — Wildflower Hub</title>
+<link rel="stylesheet" href="theme.css">
+<link rel="icon" type="image/png" href="icon-192.png">
+<script>window.HUB_ACTIVE = 'inbox';</script>
+<style>
+  .digest-card{ background:#fffdf8; border:1px solid var(--ink-line); border-radius:0; padding:18px 20px; margin: 14px 0; }
+  .digest-card ul{ margin:6px 0 0; padding-left:18px; font-size:13.5px; line-height:1.7; color: var(--bark); }
+  .connect-box{ text-align:center; padding: 34px 20px; }
+  .connect-btn{ background: var(--moss); color:#fff; border:none; font-weight:700; font-size:14px; padding:12px 24px; border-radius:0; cursor:pointer; margin-top:14px; }
+  .connect-btn:hover{ background: var(--moss-deep); }
+  .status-line{ font-family:'JetBrains Mono',monospace; font-size:11px; color: var(--muted); margin-top: 10px; }
+  .refresh-btn{ background:transparent; border:1px dashed var(--honey); color:#8a6a1f; font-size:11.5px; padding:7px 12px; border-radius:0; cursor:pointer; text-transform:lowercase; }
+  .refresh-btn:hover{ background: rgba(214,169,74,0.12); }
+</style>
+</head>
+<body>
+<div class="book">
+  <div class="cover"><div id="hub-nav"></div></div>
+  <div class="pages">
+    <h1>Inbox</h1>
+    <p class="empty-note">A quick summary of what's worth knowing in Gmail — not a full inbox replacement, just the highlights.</p>
+    <div id="app" class="card" style="margin-top:20px;">
+      <div class="empty-note">loading…</div>
+    </div>
+  </div>
+</div>
+
+<script src="nav.js"></script>
+<script src="hub-auth.js"></script>
+<script src="quick-capture.js"></script>
+<script>
+(function(){
+  const SUPABASE_URL = 'https://trwprtzbcuoqydgjphpr.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_4CT647Bp6_UUUd4ipLOAmA_D5Z8Ml1Z';
+  const AUTH_FN_URL = `${SUPABASE_URL}/functions/v1/google-tasks-auth`;
+  const AI_FN_URL = `${SUPABASE_URL}/functions/v1/ai-summarize`;
+  const GOOGLE_CLIENT_ID = '767676843739-43cgjkmulhjgnjdvah3v6qkkbn1h2ott.apps.googleusercontent.com';
+  const REDIRECT_URI = 'https://hub.coradenning.site/todos.html'; // Tasks page owns the OAuth redirect; both scopes ride the same token
+  const SCOPE = 'https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/gmail.readonly';
+
+  const app = document.getElementById('app');
+
+  async function callFn(url, body){
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'apikey': SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if(!res.ok || data.error){
+      throw new Error(data.error ? data.error + (data.detail ? ': ' + JSON.stringify(data.detail) : '') : ('HTTP '+res.status));
+    }
+    return data;
+  }
+
+  function buildAuthUrl(){
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID, redirect_uri: REDIRECT_URI, response_type: 'code',
+      scope: SCOPE, access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true'
+    });
+    return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+  }
+
+  function renderConnect(message){
+    app.innerHTML = `
+      <div class="connect-box">
+        <p class="empty-note">${message || "This uses the same Google connection as your To-Dos page — connect (or reconnect to add Gmail access) there first, then come back."}</p>
+        <button class="connect-btn" id="connectBtn">[ go to to-dos to connect ]</button>
+      </div>`;
+    document.getElementById('connectBtn').addEventListener('click', ()=>{ window.location.href = 'todos.html'; });
+  }
+
+  function renderError(msg){
+    app.innerHTML = `<div class="empty-note">Something went wrong: ${msg}. Try refreshing.</div>`;
+  }
+
+  function escapeHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function headerValue(headers, name){
+    const h = (headers||[]).find(h=>h.name.toLowerCase()===name.toLowerCase());
+    return h ? h.value : '';
+  }
+
+  async function fetchRecentEmails(accessToken){
+    const listRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=12&labelIds=INBOX&labelIds=UNREAD', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if(!listRes.ok){
+      if(listRes.status===403) throw new Error('gmail_scope_missing');
+      throw new Error('Gmail list failed: '+listRes.status);
+    }
+    const listData = await listRes.json();
+    const ids = (listData.messages||[]).map(m=>m.id);
+
+    const emails = [];
+    for(const id of ids){
+      const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if(!res.ok) continue;
+      const msg = await res.json();
+      emails.push({
+        id,
+        from: headerValue(msg.payload.headers, 'From'),
+        subject: headerValue(msg.payload.headers, 'Subject') || '(no subject)',
+        snippet: msg.snippet || ''
+      });
+    }
+    return emails;
+  }
+
+  function paintDigest(digestText, emailCount, statusExtra){
+    const bullets = digestText.split('\n').map(l=>l.replace(/^[-•\s]+/,'').trim()).filter(Boolean);
+    app.innerHTML = `
+      <div class="digest-card">
+        <div class="accent-script" style="font-size:17px; margin-bottom:2px;">worth a glance today</div>
+        <ul>${bullets.map(b=>`<li>${escapeHtml(b)}</li>`).join('')}</ul>
+      </div>
+      <div class="status-line">${emailCount} unread message${emailCount!==1?'s':''} checked${statusExtra} · <button class="refresh-btn" id="refreshBtn">refresh</button></div>
+    `;
+    document.getElementById('refreshBtn').addEventListener('click', ()=>renderDigest(window._hubAccessToken, true));
+  }
+
+  async function renderDigest(accessToken, skipCache){
+    window._hubAccessToken = accessToken;
+    const cached = skipCache ? null : window.hubCacheRead('inbox_digest');
+    if(cached){
+      paintDigest(cached.data.digestText, cached.data.emailCount, ` · from cache (${window.hubCacheAgeLabel(cached.ts)}) — checking for updates…`);
+    } else {
+      app.innerHTML = `<div class="ai-loading"><span class="ai-spinner"></span> reading your inbox…</div>`;
+    }
+
+    let emails;
+    try{ emails = await fetchRecentEmails(accessToken); }
+    catch(e){
+      if(e.message === 'gmail_scope_missing'){
+        renderConnect("Your Google connection doesn't include Gmail access yet — reconnect from the To-Dos page to add it.");
+        return;
+      }
+      if(cached) return; // keep the cached digest visible rather than erroring out
+      renderError(e.message); return;
+    }
+
+    if(emails.length===0){
+      app.innerHTML = `<div class="empty-note">no unread messages — you're caught up.</div>`;
+      return;
+    }
+
+    if(!cached) app.innerHTML = `<div class="ai-loading"><span class="ai-spinner"></span> checking your inbox…</div>`;
+    let digestText, wasCached;
+    try{
+      const result = await callFn(AI_FN_URL, { task: 'inbox_digest', emails });
+      digestText = result.digest || 'Could not generate a digest.';
+      wasCached = result.cached;
+    } catch(e){
+      if(cached) return;
+      digestText = 'Could not reach the summarizer — try refreshing.'; wasCached = false;
+    }
+
+    window.hubCacheWrite('inbox_digest', { digestText, emailCount: emails.length });
+    paintDigest(digestText, emails.length, wasCached ? ' · unchanged since last check' : ' · freshly summarized');
+  }
+
+  async function init(){
+    let result;
+    try{ result = await callFn(AUTH_FN_URL, { action: 'access_token' }); }
+    catch(e){ renderConnect("Couldn't reach the connection service — " + e.message); return; }
+    if(!result.connected){ renderConnect(); return; }
+    renderDigest(result.access_token);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
